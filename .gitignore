@@ -1,0 +1,5 @@
+accounts/*
+!accounts/.gitkeep
+.npm-cache/
+*.vsix
+node_modules/

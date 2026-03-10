@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>multi-codex dashboard</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%2310252b'/%3E%3Cpath d='M16 20h15l7 11 9-15h1v28H33l-7-11-10 11V20z' fill='%23ff6d3d'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div class="scene">
+      <header class="hero shell">
+        <div class="hero-copy">
+          <p class="eyebrow">multi-codex local dashboard</p>
+          <h1>One screen for every connected Codex account.</h1>
+          <p class="lede">
+            This dashboard reads each isolated <code>CODEX_HOME</code>, then maps account health,
+            plan metadata, local token usage, and the last observed refresh state.
+          </p>
+        </div>
+        <div class="hero-panel">
+          <div class="panel-head">
+            <span class="panel-title">Live pulse</span>
+            <div class="panel-actions">
+              <button id="refresh-button" class="button ghost" type="button">Refresh now</button>
+              <label class="toggle">
+                <input id="fast-toggle" type="checkbox" />
+                <span>Fast scan</span>
+              </label>
+            </div>
+          </div>
+          <div id="summary-grid" class="summary-grid"></div>
+          <div class="panel-meta">
+            <span id="generated-at">Waiting for first snapshot…</span>
+            <span id="status-pill" class="status-pill">connecting</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout shell">
+        <section class="accounts-column">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Account matrix</p>
+              <h2>Connected account surfaces</h2>
+            </div>
+            <div class="section-tools">
+              <button id="json-toggle" class="button" type="button">Toggle JSON</button>
+            </div>
+          </div>
+          <section class="action-panel">
+            <div>
+              <p class="section-kicker">Connect more</p>
+              <h3>Attach another account home</h3>
+              <p class="action-copy">
+                Create an empty slot for a future login, or import the current global
+                <code>~/.codex</code> session into a named slot.
+              </p>
+            </div>
+            <form id="account-form" class="action-form">
+              <label class="field">
+                <span>Account label</span>
+                <input id="account-name" name="accountName" type="text" placeholder="team-b" autocomplete="off" />
+              </label>
+              <div class="action-buttons">
+                <button id="create-account-button" class="button" type="submit">Create slot</button>
+                <button id="import-account-button" class="button ghost-dark" type="button">Import current ~/.codex</button>
+              </div>
+            </form>
+            <div id="feedback-banner" class="feedback-banner hidden"></div>
+          </section>
+          <section class="guide-panel">
+            <div class="guide-head">
+              <div>
+                <p class="section-kicker">Guided capture</p>
+                <h3>Save each team or subscription into its own slot</h3>
+              </div>
+              <div class="guide-actions">
+                <button id="open-chatgpt-button" class="button ghost-dark" type="button">Open ChatGPT</button>
+                <button id="open-settings-button" class="button ghost-dark" type="button">Open Settings</button>
+                <button id="open-usage-button" class="button ghost-dark" type="button">Open Codex Usage</button>
+              </div>
+            </div>
+            <ol class="guide-steps">
+              <li>Create a slot named after the team, workspace, or subscription you want to preserve.</li>
+              <li>Open ChatGPT or Settings, then manually switch to the target team or subscription in the browser.</li>
+              <li>On that slot card, click <strong>Launch Codex Login</strong> to open a terminal window bound to that slot’s <code>CODEX_HOME</code>.</li>
+              <li>Complete the login manually, return here, and refresh. That slot will stay isolated and can be aggregated with the rest.</li>
+            </ol>
+          </section>
+          <section class="snapshot-panel">
+            <div class="section-head">
+              <div>
+                <p class="section-kicker">Connected snapshot</p>
+                <h3>What the saved auth already tells us</h3>
+              </div>
+            </div>
+            <p class="action-copy">
+              This view compares only the connected slots. It combines each slot’s saved auth with
+              the live OpenAI usage window API, with a local Codex RPC fallback when needed, so you
+              can see 5-hour and weekly remaining quota next to the local slot labels you saved.
+            </p>
+            <div class="table-wrap">
+              <table class="snapshot-table">
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th>Status</th>
+                    <th>Plan</th>
+                    <th>Workspace</th>
+                    <th>5h left</th>
+                    <th>5h reset</th>
+                    <th>Week left</th>
+                    <th>Week reset</th>
+                    <th>Sub until</th>
+                    <th>Account ID</th>
+                    <th>Labels</th>
+                  </tr>
+                </thead>
+                <tbody id="connected-table-body"></tbody>
+              </table>
+            </div>
+          </section>
+          <div id="accounts-grid" class="accounts-grid"></div>
+          <section id="empty-state" class="empty-state hidden"></section>
+        </section>
+
+        <aside class="sidebar">
+          <section class="sidebar-card">
+            <p class="section-kicker">Project home</p>
+            <h3>Runtime context</h3>
+            <div id="project-home" class="path-block">-</div>
+          </section>
+
+          <section class="sidebar-card">
+            <p class="section-kicker">What this means</p>
+            <h3>Status semantics</h3>
+            <ul class="legend-list">
+              <li><span class="legend-dot good"></span><strong>Online</strong><span>Access token still valid.</span></li>
+              <li><span class="legend-dot warn"></span><strong>Refreshable</strong><span>Refresh token exists, access may rotate on demand.</span></li>
+              <li><span class="legend-dot danger"></span><strong>Needs login</strong><span>Stored auth is stale or incomplete.</span></li>
+              <li><span class="legend-dot muted"></span><strong>Not connected</strong><span>No auth has been stored in that account home.</span></li>
+            </ul>
+          </section>
+
+          <section class="sidebar-card">
+            <p class="section-kicker">Raw payload</p>
+            <h3>API snapshot</h3>
+            <pre id="raw-json" class="raw-json hidden"></pre>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <template id="summary-card-template">
+      <article class="summary-card">
+        <p class="summary-label"></p>
+        <strong class="summary-value"></strong>
+        <span class="summary-meta"></span>
+      </article>
+    </template>
+
+    <template id="account-card-template">
+      <article class="account-card">
+        <div class="card-glow"></div>
+        <div class="card-top">
+          <div>
+            <p class="account-name"></p>
+            <h3 class="account-slug"></h3>
+          </div>
+          <span class="health-pill"></span>
+        </div>
+
+        <p class="account-detail"></p>
+
+        <div class="metric-ribbon"></div>
+        <div class="identity-ribbon"></div>
+        <div class="info-grid"></div>
+
+        <form class="meta-form">
+          <label class="mini-field">
+            <span>Display name</span>
+            <input class="meta-name" type="text" autocomplete="off" />
+          </label>
+          <label class="mini-field">
+            <span>Team</span>
+            <input class="meta-team" type="text" autocomplete="off" />
+          </label>
+          <label class="mini-field">
+            <span>Subscription</span>
+            <input class="meta-subscription" type="text" autocomplete="off" />
+          </label>
+          <label class="mini-field">
+            <span>Owner/Auth</span>
+            <input class="meta-owner" type="text" autocomplete="off" />
+          </label>
+          <label class="mini-field mini-field-full">
+            <span>Notes</span>
+            <textarea class="meta-notes" rows="2"></textarea>
+          </label>
+        </form>
+
+        <div class="command-strip"></div>
+        <div class="admin-strip"></div>
+      </article>
+    </template>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

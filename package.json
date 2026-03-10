@@ -1,0 +1,320 @@
+{
+  "name": "multi-codex",
+  "displayName": "Multi Codex",
+  "publisher": "local-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local multi-account Codex manager built on top of CODEX_HOME isolation.",
+  "keywords": [
+    "codex",
+    "openai",
+    "vscode",
+    "multi-account"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onView:multiCodex.sidebar",
+    "onCommand:multiCodex.refresh",
+    "onCommand:multiCodex.createSlot",
+    "onCommand:multiCodex.importCurrentAuth",
+    "onCommand:multiCodex.removeSlot",
+    "onCommand:multiCodex.setViewMode",
+    "onCommand:multiCodex.toggleSortOrder",
+    "onCommand:multiCodex.selectProjectHome",
+    "onCommand:multiCodex.useManagedStorage",
+    "onCommand:multiCodex.quickSwitch",
+    "onCommand:multiCodex.quickLaunch",
+    "onCommand:multiCodex.quickLogin",
+    "onCommand:multiCodex.resumeActiveSlot",
+    "onCommand:multiCodex.openPanel",
+    "onCommand:multiCodex.launchActiveCodex",
+    "onCommand:multiCodex.loginActiveSlot"
+  ],
+  "bin": {
+    "multi-codex": "./bin/multi-codex.js"
+  },
+  "files": [
+    "bin",
+    "extension.js",
+    "lib",
+    "media",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "start": "node ./bin/multi-codex.js web",
+    "package:extension": "npx @vscode/vsce package --allow-missing-repository"
+  },
+  "engines": {
+    "node": ">=20",
+    "vscode": "^1.109.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "multiCodex.refresh",
+        "title": "Multi Codex: Refresh"
+      },
+      {
+        "command": "multiCodex.createSlot",
+        "title": "Multi Codex: Create Slot"
+      },
+      {
+        "command": "multiCodex.importCurrentAuth",
+        "title": "Multi Codex: Import Current Login"
+      },
+      {
+        "command": "multiCodex.removeSlot",
+        "title": "Multi Codex: Remove Slot"
+      },
+      {
+        "command": "multiCodex.setViewMode",
+        "title": "Multi Codex: Set View Mode"
+      },
+      {
+        "command": "multiCodex.toggleSortOrder",
+        "title": "Multi Codex: Toggle 5h Sort"
+      },
+      {
+        "command": "multiCodex.selectProjectHome",
+        "title": "Multi Codex: Select Project Home"
+      },
+      {
+        "command": "multiCodex.useManagedStorage",
+        "title": "Multi Codex: Use Extension Storage"
+      },
+      {
+        "command": "multiCodex.quickSwitch",
+        "title": "Multi Codex: Quick Switch Slot"
+      },
+      {
+        "command": "multiCodex.quickLaunch",
+        "title": "Multi Codex: Quick Launch Slot"
+      },
+      {
+        "command": "multiCodex.quickLogin",
+        "title": "Multi Codex: Quick Login Slot"
+      },
+      {
+        "command": "multiCodex.resumeActiveSlot",
+        "title": "Multi Codex: Resume Active Slot"
+      },
+      {
+        "command": "multiCodex.openPanel",
+        "title": "Multi Codex: Open Panel"
+      },
+      {
+        "command": "multiCodex.launchActiveCodex",
+        "title": "Multi Codex: Launch Active Codex"
+      },
+      {
+        "command": "multiCodex.loginActiveSlot",
+        "title": "Multi Codex: Login Active Slot"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "multiCodex",
+          "title": "Multi Codex",
+          "icon": "media/codex-view.svg"
+        }
+      ]
+    },
+    "views": {
+      "multiCodex": [
+        {
+          "id": "multiCodex.sidebar",
+          "name": "Slots",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "multiCodex.refresh",
+          "when": "view == multiCodex.sidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "multiCodex.quickSwitch",
+          "when": "view == multiCodex.sidebar",
+          "group": "navigation@2"
+        },
+        {
+          "command": "multiCodex.createSlot",
+          "when": "view == multiCodex.sidebar",
+          "group": "navigation@3"
+        },
+        {
+          "command": "multiCodex.setViewMode",
+          "when": "view == multiCodex.sidebar",
+          "group": "navigation@4"
+        },
+        {
+          "command": "multiCodex.toggleSortOrder",
+          "when": "view == multiCodex.sidebar",
+          "group": "navigation@5"
+        },
+        {
+          "command": "multiCodex.quickLaunch",
+          "when": "view == multiCodex.sidebar",
+          "group": "navigation@6"
+        },
+        {
+          "command": "multiCodex.openPanel",
+          "when": "view == multiCodex.sidebar",
+          "group": "navigation@7"
+        },
+        {
+          "command": "multiCodex.resumeActiveSlot",
+          "when": "view == multiCodex.sidebar",
+          "group": "navigation@8"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "multiCodex.refresh",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.createSlot",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.importCurrentAuth",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.removeSlot",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.setViewMode",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.toggleSortOrder",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.selectProjectHome",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.useManagedStorage",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.quickSwitch",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.quickLaunch",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.quickLogin",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.resumeActiveSlot",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.openPanel",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.launchActiveCodex",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.loginActiveSlot",
+          "when": "true"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Multi Codex",
+      "properties": {
+        "multiCodex.projectHome": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the multi-codex account store. Leave blank to auto-detect existing homes and fall back to the extension storage."
+        },
+        "multiCodex.fastScan": {
+          "type": "boolean",
+          "default": true,
+          "description": "Skip deep local token log parsing in the VS Code sidebar."
+        },
+        "multiCodex.autoRefreshHours": {
+          "type": "number",
+          "default": 6,
+          "minimum": 0.25,
+          "description": "How often the sidebar refreshes remote quota while visible."
+        },
+        "multiCodex.viewMode": {
+          "type": "string",
+          "default": "standard",
+          "enum": [
+            "minimal",
+            "standard",
+            "detailed"
+          ],
+          "description": "How much slot detail the sidebar shows."
+        },
+        "multiCodex.primarySortOrder": {
+          "type": "string",
+          "default": "asc",
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "description": "Sort direction for the 5h remaining quota in the sidebar."
+        },
+        "multiCodex.activeSlot": {
+          "type": "string",
+          "default": "",
+          "description": "Globally preferred active slot slug shared across VS Code windows."
+        },
+        "multiCodex.codexCommand": {
+          "type": "string",
+          "default": "codex",
+          "description": "Command used to launch Codex inside VS Code terminals."
+        },
+        "multiCodex.defaultModel": {
+          "type": "string",
+          "default": "gpt-5.4",
+          "description": "Default model passed to interactive Codex launches from Multi Codex."
+        },
+        "multiCodex.defaultReasoningEffort": {
+          "type": "string",
+          "default": "xhigh",
+          "description": "Default model reasoning effort passed via -c model_reasoning_effort=... for interactive Codex launches."
+        },
+        "multiCodex.bypassApprovalsAndSandbox": {
+          "type": "boolean",
+          "default": true,
+          "description": "When enabled, interactive Codex launches include --dangerously-bypass-approvals-and-sandbox."
+        },
+        "multiCodex.terminalLocation": {
+          "type": "string",
+          "default": "editor",
+          "enum": [
+            "editor",
+            "panel"
+          ],
+          "description": "Where Multi Codex opens Codex terminals. 'editor' uses the editor area in the current active group. 'panel' uses the normal terminal area."
+        }
+      }
+    }
+  }
+}
