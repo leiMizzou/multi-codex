@@ -27,9 +27,12 @@ accounts/<slug>/
     config.toml
     history.jsonl
     sessions/
+accounts/_project/
+  launch.json
 ```
 
 Each `home/` directory is used as that account's `CODEX_HOME`.
+`accounts/_project/` is reserved for local dashboard launch settings and is ignored by git.
 
 ## Quick start
 
@@ -73,10 +76,22 @@ The web dashboard now supports:
 - creating an empty account slot
 - importing the current `~/.codex` session into a named slot
 - opening ChatGPT, account settings, and Codex usage pages from the dashboard
-- launching a per-slot `codex login` terminal window
+- launching either a per-slot `codex login` terminal window or a proxy-backed `codex` terminal window
 - saving per-slot labels for `team`, `subscription`, `owner/auth`, and notes
+- saving project-local proxy/router launch settings for `OPENAI_BASE_URL` or a custom `model_provider`
+- testing the current proxy settings from the dashboard before launching Codex
+- saving an optional local proxy start command and launching it in a terminal from the dashboard
 - removing a slot you no longer need
 - copying login, shell, env, and status commands per account
+
+Dashboard proxy routing:
+
+- Proxy settings are edited in the web dashboard and stored under `accounts/_project/launch.json`.
+- `OPENAI_BASE_URL` mode is the lightest option when the built-in OpenAI provider should talk to a router or data-residency endpoint.
+- `Custom provider` mode injects `model_provider` and `model_providers.<id>.*` overrides with `wire_api="responses"`, which matches OpenAI-compatible reverse proxies such as CLIProxyAPI.
+- `Local start command` is optional and lets the dashboard open a terminal and start your proxy process before you launch Codex.
+- The dashboard does not expose `temperature`, `top_p`, or `top_k` for Codex launches.
+- If the saved proxy config can authenticate through an API key, the launch button opens `codex` directly and does not require the slot itself to be logged in.
 
 ## VS Code extension
 
@@ -89,11 +104,12 @@ What the extension does:
 - shows quota reset times for both the 5-hour and weekly windows
 - can run in its own extension-managed storage, without the web server and without a separate multi-codex project directory
 - lets you pick an active slot without typing login commands again
-- `Use + Open` launches `codex resume --last --all` when the slot already has local session history; otherwise it starts a fresh `codex` session
+- `Use + Open` always launches a fresh `codex` session for that slot
 - launches `codex` or `codex login` in a VS Code integrated terminal with that slot's `CODEX_HOME`
-- can resume the active slot directly with `codex resume` from the sidebar or command palette
+- can resume the active slot directly with `codex resume --all` from the sidebar or command palette
 - when you switch the active slot, VS Code terminal environment defaults are updated so newly opened terminals inherit that slot's `CODEX_HOME`
-- interactive launches default to `--dangerously-bypass-approvals-and-sandbox`, `-m gpt-5.4`, and `-c 'model_reasoning_effort="xhigh"'` unless you override the extension settings
+- can route interactive Codex launches through an external proxy via `OPENAI_BASE_URL` or a custom `model_provider` that uses the Responses API
+- interactive launches default to `--dangerously-bypass-approvals-and-sandbox`, `-m gpt-5.4`, `-c 'model_reasoning_effort="xhigh"'`, `-c 'service_tier="fast"'`, and `-c 'tui.status_line=["model-with-reasoning","current-dir","five-hour-limit","weekly-limit","used-tokens"]'` unless you override the extension settings
 - the toolbar can toggle `5h left` sorting between ascending and descending, and the chosen order is stored globally
 - opens those terminals in the editor area by default, as top tabs beside the active editor
 - supports three sidebar display modes: `Minimal`, `Standard`, and `Detailed`
@@ -133,13 +149,31 @@ If you want to point it at an existing account store instead, run:
 Multi Codex: Select Project Home
 ```
 
-Then point it at the folder that contains `accounts/`, or at an existing multi-codex project root.
+Then point it at the folder that contains `accounts/`, at an existing multi-codex project root, or at an empty directory that should become a new store.
+
+External proxy / router support:
+
+- `multiCodex.proxyMode = "openaiBaseUrl"` sets `OPENAI_BASE_URL` for extension-launched Codex terminals. This is the lightest option when the built-in OpenAI provider should talk to a router or data-residency endpoint.
+- `multiCodex.proxyMode = "customProvider"` injects `-c model_provider=...` and `-c model_providers.<id>.*` overrides with `wire_api="responses"`. This is the mode to use for OpenAI-compatible reverse proxies such as CLIProxyAPI.
+- `Multi Codex: Set Proxy API Key` stores an optional proxy key in VS Code Secret Storage. If no key is stored, Codex must find the relevant API key env var from the surrounding environment.
+- In `customProvider` mode, `Use + Open` does not require the slot itself to be logged in, because the launch can authenticate through the configured proxy API key instead.
+
+Example settings for CLIProxyAPI:
+
+```json
+{
+  "multiCodex.proxyMode": "customProvider",
+  "multiCodex.proxyBaseUrl": "http://127.0.0.1:8317",
+  "multiCodex.proxyProviderId": "cliproxyapi",
+  "multiCodex.proxyEnvKey": "OPENAI_API_KEY"
+}
+```
 
 Recommended capture flow for multiple teams/subscriptions:
 
 1. Create a slot named after the team or subscription you want to preserve.
 2. Open ChatGPT or Settings from the dashboard and manually switch to that target team/subscription.
-3. On that slot card, click `Launch Codex Login` and finish the login in the new terminal window.
+3. On that slot card, click the launch button. In normal mode it opens `codex login`; with proxy routing it opens `codex` using the saved router settings.
 4. Save `team`, `subscription`, `owner/auth`, and notes on the slot card.
 5. Refresh the dashboard. That slot remains isolated and will aggregate alongside your other saved slots.
 

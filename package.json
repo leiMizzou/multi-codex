@@ -34,7 +34,9 @@
     "onCommand:multiCodex.resumeActiveSlot",
     "onCommand:multiCodex.openPanel",
     "onCommand:multiCodex.launchActiveCodex",
-    "onCommand:multiCodex.loginActiveSlot"
+    "onCommand:multiCodex.loginActiveSlot",
+    "onCommand:multiCodex.setProxyApiKey",
+    "onCommand:multiCodex.clearProxyApiKey"
   ],
   "bin": {
     "multi-codex": "./bin/multi-codex.js"
@@ -116,6 +118,14 @@
       {
         "command": "multiCodex.loginActiveSlot",
         "title": "Multi Codex: Login Active Slot"
+      },
+      {
+        "command": "multiCodex.setProxyApiKey",
+        "title": "Multi Codex: Set Proxy API Key"
+      },
+      {
+        "command": "multiCodex.clearProxyApiKey",
+        "title": "Multi Codex: Clear Proxy API Key"
       }
     ],
     "viewsContainers": {
@@ -239,6 +249,14 @@
         {
           "command": "multiCodex.loginActiveSlot",
           "when": "true"
+        },
+        {
+          "command": "multiCodex.setProxyApiKey",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.clearProxyApiKey",
+          "when": "true"
         }
       ]
     },
@@ -290,6 +308,31 @@
           "default": "codex",
           "description": "Command used to launch Codex inside VS Code terminals."
         },
+        "multiCodex.proxyMode": {
+          "type": "string",
+          "default": "off",
+          "enum": [
+            "off",
+            "openaiBaseUrl",
+            "customProvider"
+          ],
+          "description": "Optional external proxy mode for Codex launches. 'openaiBaseUrl' sets OPENAI_BASE_URL. 'customProvider' injects model_provider/model_providers.* settings with wire_api=\"responses\"."
+        },
+        "multiCodex.proxyBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Base URL for the external proxy/router used by proxy mode, for example http://127.0.0.1:8317."
+        },
+        "multiCodex.proxyProviderId": {
+          "type": "string",
+          "default": "proxy",
+          "description": "Provider id used for customProvider mode. Invalid characters are normalized to underscores before launch."
+        },
+        "multiCodex.proxyEnvKey": {
+          "type": "string",
+          "default": "OPENAI_API_KEY",
+          "description": "Environment variable name referenced by customProvider mode via model_providers.<id>.env_key."
+        },
         "multiCodex.defaultModel": {
           "type": "string",
           "default": "gpt-5.4",
@@ -299,6 +342,25 @@
           "type": "string",
           "default": "xhigh",
           "description": "Default model reasoning effort passed via -c model_reasoning_effort=... for interactive Codex launches."
+        },
+        "multiCodex.defaultServiceTier": {
+          "type": "string",
+          "default": "fast",
+          "description": "Default service tier passed via -c service_tier=... for interactive Codex launches."
+        },
+        "multiCodex.defaultStatusLine": {
+          "type": "array",
+          "default": [
+            "model-with-reasoning",
+            "current-dir",
+            "five-hour-limit",
+            "weekly-limit",
+            "used-tokens"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Default Codex TUI status line items passed via -c tui.status_line=[...] for interactive launches."
         },
         "multiCodex.bypassApprovalsAndSandbox": {
           "type": "boolean",

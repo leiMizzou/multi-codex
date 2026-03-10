@@ -6,6 +6,7 @@ const state = {
   loading: false,
   jsonVisible: false,
   loadPromise: null,
+  proxyTest: null,
   selectedSlug: null,
 };
 
@@ -30,6 +31,21 @@ const fastToggle = document.querySelector("#fast-toggle");
 const connectedTableBody = document.querySelector("#connected-table-body");
 const summaryCardTemplate = document.querySelector("#summary-card-template");
 const accountCardTemplate = document.querySelector("#account-card-template");
+const proxyForm = document.querySelector("#proxy-form");
+const proxyModeInput = document.querySelector("#proxy-mode");
+const proxyBaseUrlInput = document.querySelector("#proxy-base-url");
+const proxyProviderIdInput = document.querySelector("#proxy-provider-id");
+const proxyEnvKeyInput = document.querySelector("#proxy-env-key");
+const proxyApiKeyInput = document.querySelector("#proxy-api-key");
+const proxyStartCommandInput = document.querySelector("#proxy-start-command");
+const proxyStartCwdInput = document.querySelector("#proxy-start-cwd");
+const proxyModePill = document.querySelector("#proxy-mode-pill");
+const proxySummary = document.querySelector("#proxy-summary");
+const saveProxyButton = document.querySelector("#save-proxy-button");
+const testProxyButton = document.querySelector("#test-proxy-button");
+const startProxyButton = document.querySelector("#start-proxy-button");
+const disableProxyButton = document.querySelector("#disable-proxy-button");
+const proxyTestResult = document.querySelector("#proxy-test-result");
 
 refreshButton.addEventListener("click", () => loadSnapshot({ force: true }));
 jsonToggle.addEventListener("click", () => {
@@ -55,6 +71,25 @@ openUsageButton.addEventListener("click", () => {
 fastToggle.addEventListener("change", () => {
   state.fast = fastToggle.checked;
   loadSnapshot({ force: true });
+});
+proxyForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void saveProxyFromForm();
+});
+proxyModeInput.addEventListener("change", () => {
+  syncProxyFieldState();
+});
+proxyStartCommandInput.addEventListener("input", () => {
+  syncProxyFieldState();
+});
+testProxyButton.addEventListener("click", () => {
+  void testProxyFromForm();
+});
+startProxyButton.addEventListener("click", () => {
+  void startProxyFromForm();
+});
+disableProxyButton.addEventListener("click", () => {
+  void disableProxyRouting();
 });
 
 async function loadSnapshot(options = {}) {
@@ -111,9 +146,119 @@ function render() {
   rawJson.textContent = JSON.stringify(payload, null, 2);
 
   renderSummary(payload);
+  renderLaunchProxy(payload.launch?.proxy);
+  renderProxyTest(state.proxyTest);
   renderConnectedSnapshot(payload.accounts || []);
   renderAccounts(payload.accounts || []);
   renderEmptyState(payload);
+}
+
+function readProxyFormPayload() {
+  const payload = {
+    mode: proxyModeInput.value,
+    baseUrl: proxyBaseUrlInput.value,
+    providerId: proxyProviderIdInput.value,
+    envKey: proxyEnvKeyInput.value,
+    startCommand: proxyStartCommandInput.value,
+    startCwd: proxyStartCwdInput.value,
+  };
+  const apiKey = proxyApiKeyInput.value.trim();
+  if (apiKey) {
+    payload.apiKey = apiKey;
+  }
+  return payload;
+}
+
+async function saveProxyFromForm() {
+  const payload = readProxyFormPayload();
+
+  try {
+    saveProxyButton.disabled = true;
+    state.proxyTest = null;
+    renderProxyTest(state.proxyTest);
+    const result = await mutate("/api/settings/launch", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    proxyApiKeyInput.value = "";
+    const launch = result.launch?.proxy;
+    if (launch?.resolved?.issues?.length > 0) {
+      setFeedback(launch.resolved.issues[0], "error");
+      return;
+    }
+    if (launch?.resolved?.enabled) {
+      setFeedback(`Saved proxy routing: ${launch.resolved.summary}.`, "good");
+      return;
+    }
+    setFeedback("Proxy routing is off for dashboard launches.", "warn");
+  } catch (error) {
+    setFeedback(error.message || String(error), "error");
+  } finally {
+    saveProxyButton.disabled = false;
+  }
+}
+
+async function disableProxyRouting() {
+  try {
+    disableProxyButton.disabled = true;
+    state.proxyTest = null;
+    renderProxyTest(state.proxyTest);
+    await mutate("/api/settings/launch", {
+      method: "PATCH",
+      body: JSON.stringify({
+        mode: "off",
+        baseUrl: "",
+        providerId: "",
+        envKey: "",
+        clearApiKey: true,
+      }),
+    });
+    proxyApiKeyInput.value = "";
+    setFeedback("Proxy routing disabled for dashboard launches.", "warn");
+  } catch (error) {
+    setFeedback(error.message || String(error), "error");
+  } finally {
+    disableProxyButton.disabled = false;
+  }
+}
+
+async function testProxyFromForm() {
+  try {
+    testProxyButton.disabled = true;
+    const result = await requestJson("/api/settings/launch/test", {
+      method: "POST",
+      body: JSON.stringify(readProxyFormPayload()),
+    });
+    state.proxyTest = result.test || null;
+    renderProxyTest(state.proxyTest);
+    if (result.test?.ok) {
+      setFeedback(result.test.summary, "good");
+      return;
+    }
+    setFeedback(result.test?.summary || "Proxy test failed.", "error");
+  } catch (error) {
+    setFeedback(error.message || String(error), "error");
+  } finally {
+    testProxyButton.disabled = false;
+  }
+}
+
+async function startProxyFromForm() {
+  try {
+    startProxyButton.disabled = true;
+    const result = await requestJson("/api/settings/launch/start", {
+      method: "POST",
+      body: JSON.stringify(readProxyFormPayload()),
+    });
+    setFeedback(
+      `Started local proxy command in a terminal: ${result.command}`,
+      "good",
+    );
+  } catch (error) {
+    setFeedback(error.message || String(error), "error");
+  } finally {
+    startProxyButton.disabled = false;
+  }
 }
 
 async function createAccountFromForm() {
@@ -267,6 +412,7 @@ function makeAccountCard(account) {
   const node = accountCardTemplate.content.firstElementChild.cloneNode(true);
   const remoteUsage = account.remoteUsage || {};
   const allAccounts = state.data?.accounts || [];
+  const launchActionLabel = account.launch?.actionLabel || "Launch Codex Login";
   node.querySelector(".account-name").textContent = `slot ${account.slug}`;
   node.querySelector(".account-slug").textContent = resolveAccountTitle(account, allAccounts);
 
@@ -326,7 +472,7 @@ function makeAccountCard(account) {
 
   const commandStrip = node.querySelector(".command-strip");
   const commandEntries = [
-    ["Login", account.commands.login],
+    [launchActionLabel, account.commands.launch || account.commands.launchLogin || account.commands.login],
     ["Import", account.commands.importCurrent],
     ["Shell", account.commands.shell],
     ["Status", account.commands.status],
@@ -369,16 +515,23 @@ function makeAccountCard(account) {
       });
       setFeedback(`Saved labels for '${account.slug}'.`, "good");
     }, "good"),
-    makeActionButton("Launch Codex Login", async () => {
+    makeActionButton(launchActionLabel, async () => {
       const result = await requestJson(
-        `/api/accounts/${encodeURIComponent(account.slug)}/launch-login`,
+        `/api/accounts/${encodeURIComponent(account.slug)}/launch`,
         {
           method: "POST",
           body: JSON.stringify({}),
         },
       );
+      if (result.requiresSlotLogin) {
+        setFeedback(
+          `Opened a terminal for '${result.slug}'. Complete the login there, then refresh this page.`,
+          "good",
+        );
+        return;
+      }
       setFeedback(
-        `Opened a terminal for '${result.slug}'. Complete the login there, then refresh this page.`,
+        `Opened a proxy-backed Codex terminal for '${result.slug}'. The slot stays isolated through its own CODEX_HOME.`,
         "good",
       );
     }, "good"),
@@ -757,6 +910,81 @@ function makeActionButton(label, handler, tone = "default") {
     }
   });
   return button;
+}
+
+function renderLaunchProxy(proxy) {
+  const settings = proxy?.settings || {};
+  const resolved = proxy?.resolved || {};
+  proxyModeInput.value = settings.mode || "off";
+  proxyBaseUrlInput.value = settings.baseUrl || "";
+  proxyProviderIdInput.value = settings.providerId || "";
+  proxyEnvKeyInput.value = settings.envKey || "";
+  proxyApiKeyInput.value = "";
+  proxyStartCommandInput.value = settings.startCommand || "";
+  proxyStartCwdInput.value = settings.startCwd || "";
+  proxyApiKeyInput.placeholder = settings.hasApiKey
+    ? "Saved locally. Leave blank to keep the current key."
+    : "Optional. Leave blank to use an env var from your shell.";
+
+  const issues = Array.isArray(resolved.issues) ? resolved.issues : [];
+  proxyModePill.textContent = issues.length > 0
+    ? "Proxy issue"
+    : resolved.enabled
+      ? resolved.requiresSlotLogin
+        ? "Proxy needs login"
+        : "Proxy ready"
+      : "Proxy off";
+  proxyModePill.dataset.tone = issues.length > 0
+    ? "danger"
+    : resolved.enabled
+      ? "good"
+      : "muted";
+
+  const summaryParts = [resolved.summary || "Proxy off"];
+  if (settings.hasApiKey) {
+    summaryParts.push("API key stored locally");
+  }
+  if (settings.startCommand) {
+    summaryParts.push("Local start command saved");
+  }
+  if (settings.updatedAt) {
+    summaryParts.push(`Saved ${formatRelative(settings.updatedAt)}`);
+  }
+  proxySummary.textContent = summaryParts.join(" · ");
+  syncProxyFieldState();
+}
+
+function renderProxyTest(result) {
+  if (!result) {
+    proxyTestResult.textContent = "";
+    proxyTestResult.classList.add("hidden");
+    delete proxyTestResult.dataset.tone;
+    return;
+  }
+
+  const parts = [result.summary || (result.ok ? "Proxy test passed." : "Proxy test failed.")];
+  if (Array.isArray(result.models) && result.models.length > 0) {
+    parts.push(`Models: ${result.models.join(", ")}`);
+  }
+  if (result.testedAt) {
+    parts.push(`Checked ${formatRelative(result.testedAt)}`);
+  }
+
+  proxyTestResult.textContent = parts.join(" · ");
+  proxyTestResult.dataset.tone = result.ok ? "good" : "danger";
+  proxyTestResult.classList.remove("hidden");
+}
+
+function syncProxyFieldState() {
+  const mode = proxyModeInput.value;
+  const proxyEnabled = mode !== "off";
+  const customProvider = mode === "customProvider";
+
+  proxyBaseUrlInput.disabled = !proxyEnabled;
+  proxyApiKeyInput.disabled = !proxyEnabled;
+  proxyProviderIdInput.disabled = !customProvider;
+  proxyEnvKeyInput.disabled = !customProvider;
+  startProxyButton.disabled = !proxyStartCommandInput.value.trim();
 }
 
 function setStatusPill(mode, text) {

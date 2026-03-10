@@ -19,6 +19,7 @@ function makeJwt(payload) {
 test("dashboard server supports account onboarding APIs", async (t) => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "multi-codex-server-"));
   const sourceHome = path.join(tempRoot, "source-home");
+  const launchedCommands = [];
   await fs.mkdir(sourceHome, { recursive: true });
   await fs.writeFile(
     path.join(sourceHome, "auth.json"),
@@ -41,6 +42,29 @@ test("dashboard server supports account onboarding APIs", async (t) => {
 
   const started = await startDashboardServer({
     cacheTtlMs: 0,
+    fetchImpl: async (url) => {
+      if (url === "http://127.0.0.1:8317/models") {
+        return {
+          ok: false,
+          status: 404,
+          text: async () => JSON.stringify({ error: { message: "not found" } }),
+        };
+      }
+      if (url === "http://127.0.0.1:8317/v1/models") {
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              data: [{ id: "gpt-5.4" }],
+            }),
+        };
+      }
+      throw new Error(`Unexpected fetch url ${url}`);
+    },
+    launchTerminalImpl: async (command) => {
+      launchedCommands.push(command);
+    },
     port: 0,
     projectHome: tempRoot,
     remote: false,
@@ -102,6 +126,63 @@ test("dashboard server supports account onboarding APIs", async (t) => {
   assert.equal(response.status, 200);
   assert.equal(payload.account.meta.teamLabel, "Team Blue");
   assert.equal(payload.dashboard.accounts[0].meta.subscriptionLabel, "Enterprise");
+
+  response = await fetch(`${started.url}/api/settings/launch`, {
+    method: "PATCH",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      mode: "customProvider",
+      baseUrl: "http://127.0.0.1:8317",
+      providerId: "cli-proxy-api",
+      envKey: "proxy_api_key",
+      apiKey: "secret-proxy-key",
+    }),
+  });
+  payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.launch.proxy.settings.baseUrl, "http://127.0.0.1:8317");
+  assert.equal(payload.launch.proxy.settings.hasApiKey, true);
+  assert.equal(payload.launch.proxy.resolved.requiresSlotLogin, false);
+  assert.equal(payload.dashboard.accounts[0].launch.actionLabel, "Launch Codex");
+
+  response = await fetch(`${started.url}/api/settings/launch/test`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      mode: "customProvider",
+      baseUrl: "http://127.0.0.1:8317",
+      providerId: "cli-proxy-api",
+      envKey: "proxy_api_key",
+      apiKey: "secret-proxy-key",
+    }),
+  });
+  payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.test.url, "http://127.0.0.1:8317/v1/models");
+  assert.deepEqual(payload.test.models, ["gpt-5.4"]);
+
+  response = await fetch(`${started.url}/api/settings/launch/start`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      startCommand: "cliproxyapi --config ./config.yaml",
+      startCwd: "/tmp/cliproxyapi",
+    }),
+  });
+  payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.ok, true);
+  assert.equal(
+    launchedCommands.at(-1),
+    "cd '/tmp/cliproxyapi' && cliproxyapi --config ./config.yaml",
+  );
 
   response = await fetch(`${started.url}/api/accounts/alpha`, {
     method: "DELETE",

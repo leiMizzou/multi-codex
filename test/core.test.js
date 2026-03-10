@@ -9,12 +9,15 @@ const assert = require("node:assert/strict");
 const {
   buildCodexLoginCommand,
   buildDashboardPayload,
+  buildProjectProxyStartCommand,
   collectUsageStats,
   decodeJwtPayload,
   deriveAccountHealth,
   extractAuthSummary,
   fetchCodexRemoteUsage,
   slugifyName,
+  testProxyLaunchSettings,
+  updateProjectLaunchSettings,
 } = require("../lib/core");
 
 function makeJwt(payload) {
@@ -252,6 +255,8 @@ test("buildDashboardPayload summarizes connected account data for the web API", 
   assert.equal(payload.summary.activeCount, 1);
   assert.equal(payload.summary.localTotalTokens, 777);
   assert.equal(payload.accounts[0].health.state, "online");
+  assert.equal(payload.launch.proxy.resolved.summary, "Proxy off");
+  assert.equal(payload.accounts[0].launch.actionLabel, "Launch Codex Login");
   assert.equal(payload.accounts[0].commands.login, "./bin/multi-codex.js login alpha");
 });
 
@@ -458,5 +463,129 @@ test("buildCodexLoginCommand isolates login by CODEX_HOME", async () => {
   });
 
   assert.match(command, /export CODEX_HOME='.*accounts\/alpha\/home'/);
-  assert.match(command, /codex login$/);
+  assert.match(command, /codex 'login'$/);
+});
+
+test("buildCodexLoginCommand injects proxy routing when project launch settings are enabled", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "multi-codex-proxy-command-"));
+  const accountDir = path.join(tempRoot, "accounts", "alpha", "home");
+  await fs.mkdir(accountDir, { recursive: true });
+  await updateProjectLaunchSettings(
+    {
+      mode: "customProvider",
+      baseUrl: "http://127.0.0.1:8317",
+      providerId: "cli-proxy-api",
+      envKey: "proxy_api_key",
+      apiKey: "secret-proxy-key",
+    },
+    tempRoot,
+  );
+
+  const command = buildCodexLoginCommand("alpha", {
+    projectHome: tempRoot,
+  });
+
+  assert.match(command, /export CODEX_HOME='.*accounts\/alpha\/home'/);
+  assert.match(command, /export PROXY_API_KEY='secret-proxy-key'/);
+  assert.match(command, /model_provider="cli_proxy_api"/);
+  assert.match(command, /model_providers\.cli_proxy_api\.wire_api="responses"/);
+  assert.doesNotMatch(command, /\bcodex\b.*\blogin\b$/);
+});
+
+test("buildDashboardPayload keeps project launch state out of account slots", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "multi-codex-project-launch-"));
+  const accountDir = path.join(tempRoot, "accounts", "alpha", "home");
+  await fs.mkdir(accountDir, { recursive: true });
+  await fs.writeFile(
+    path.join(tempRoot, "accounts", "alpha", "meta.json"),
+    JSON.stringify({
+      name: "Alpha",
+      slug: "alpha",
+      createdAt: "2026-03-10T09:00:00+00:00",
+      updatedAt: "2026-03-10T09:10:00+00:00",
+    }),
+    "utf8",
+  );
+  await updateProjectLaunchSettings(
+    {
+      mode: "openaiBaseUrl",
+      baseUrl: "http://127.0.0.1:8317",
+      apiKey: "secret-proxy-key",
+    },
+    tempRoot,
+  );
+
+  const payload = await buildDashboardPayload({
+    projectHome: tempRoot,
+    deep: false,
+    remote: false,
+  });
+
+  assert.equal(payload.summary.accountCount, 1);
+  assert.equal(payload.accounts.length, 1);
+  assert.equal(payload.launch.proxy.settings.hasApiKey, true);
+  assert.equal(payload.launch.proxy.resolved.requiresSlotLogin, false);
+  assert.equal(payload.accounts[0].launch.actionLabel, "Launch Codex");
+  assert.match(payload.accounts[0].commands.launch, /OPENAI_BASE_URL='http:\/\/127\.0\.0\.1:8317'/);
+});
+
+test("testProxyLaunchSettings falls back to /v1/models and reports model visibility", async () => {
+  const calls = [];
+  const result = await testProxyLaunchSettings(
+    {
+      mode: "customProvider",
+      baseUrl: "http://127.0.0.1:8317",
+      providerId: "cli-proxy-api",
+      envKey: "proxy_api_key",
+      apiKey: "secret-proxy-key",
+    },
+    {
+      fetchImpl: async (url, options) => {
+        calls.push({ url, options });
+        if (url === "http://127.0.0.1:8317/models") {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ error: { message: "not found" } }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              data: [
+                { id: "gpt-5.4" },
+                { id: "codex-mini-latest" },
+              ],
+            }),
+        };
+      },
+    },
+  );
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, "http://127.0.0.1:8317/models");
+  assert.equal(calls[1].url, "http://127.0.0.1:8317/v1/models");
+  assert.equal(result.ok, true);
+  assert.equal(result.url, "http://127.0.0.1:8317/v1/models");
+  assert.equal(result.modelCount, 2);
+  assert.deepEqual(result.models, ["gpt-5.4", "codex-mini-latest"]);
+});
+
+test("buildProjectProxyStartCommand wraps the saved local start command with cwd", () => {
+  const command = buildProjectProxyStartCommand(
+    {
+      startCommand: "cliproxyapi --config ./config.yaml",
+      startCwd: "/tmp/cliproxyapi",
+    },
+    {
+      projectHome: "/tmp/project-home",
+    },
+  );
+
+  assert.equal(
+    command,
+    "cd '/tmp/cliproxyapi' && cliproxyapi --config ./config.yaml",
+  );
 });

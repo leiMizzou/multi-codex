@@ -11,6 +11,20 @@ const {
   createAccount,
   deleteAccount,
 } = require("./lib/core");
+const {
+  DEFAULT_STATUS_LINE,
+  DEFAULT_PROXY_MODE,
+  DEFAULT_PROXY_PROVIDER_ID,
+  DEFAULT_PROXY_ENV_KEY,
+  resolveProxyLaunchOptions,
+} = require("./lib/launch");
+const {
+  buildSlotLaunchCommand,
+  getProjectHomeSelectionKind,
+  getSlotActionState,
+  isAccountStoreHome,
+  shouldForceSnapshotRefresh,
+} = require("./lib/extension-support");
 
 const CONFIG_PREFIX = "multiCodex";
 const VIEW_ID = "multiCodex.sidebar";
@@ -19,6 +33,7 @@ const ACTIVE_SLOT_KEY = "multiCodex.activeSlot";
 const ACTIVE_SLOT_CONFIG_KEY = "activeSlot";
 const SORT_ORDER_CONFIG_KEY = "primarySortOrder";
 const MANAGED_HOME_SEGMENT = "store";
+const PROXY_API_KEY_SECRET = "multiCodex.proxyApiKey";
 
 function activate(context) {
   const controller = new MultiCodexController(context);
@@ -44,6 +59,9 @@ class MultiCodexController {
       autoRefreshMs: this.getAutoRefreshMs(),
       viewMode: this.getViewMode(),
       sortOrder: this.getSortOrder(),
+      proxyMode: DEFAULT_PROXY_MODE,
+      proxySummary: "Proxy off",
+      launchRequiresConnectedSlot: true,
       summary: null,
       accounts: [],
     };
@@ -57,6 +75,8 @@ class MultiCodexController {
 
     this.refreshTimer = null;
     this.envCollection = context.environmentVariableCollection;
+    this.proxyApiKey = "";
+    this.proxyReady = this.initializeProxyApiKey();
     this.disposables = [
       this.statusBar,
       vscode.window.registerWebviewViewProvider(
@@ -111,15 +131,15 @@ class MultiCodexController {
       vscode.commands.registerCommand("multiCodex.loginActiveSlot", () =>
         this.launchLoginForSlot(this.state.activeSlug),
       ),
-      vscode.workspace.onDidChangeConfiguration((event) => {
-        if (!event.affectsConfiguration(CONFIG_PREFIX)) {
-          return;
-        }
-        this.cachedAt = 0;
-        this.state.autoRefreshMs = this.getAutoRefreshMs();
-        this.resetRefreshTimer();
-        void this.refresh(true, true);
-      }),
+      vscode.commands.registerCommand("multiCodex.setProxyApiKey", () =>
+        this.setProxyApiKey(),
+      ),
+      vscode.commands.registerCommand("multiCodex.clearProxyApiKey", () =>
+        this.clearProxyApiKey(),
+      ),
+      vscode.workspace.onDidChangeConfiguration((event) =>
+        void this.handleConfigurationChange(event),
+      ),
     ];
 
     this.resetRefreshTimer();
@@ -242,6 +262,96 @@ class MultiCodexController {
     await this.pushState();
   }
 
+  async initializeProxyApiKey() {
+    const migrated = await this.migrateLegacyProxyApiKey();
+    this.proxyApiKey = (await this.context.secrets.get(PROXY_API_KEY_SECRET)) || "";
+
+    if (migrated) {
+      void vscode.window.showInformationMessage(
+        "Moved the Multi Codex proxy API key into VS Code Secret Storage.",
+      );
+    }
+  }
+
+  async migrateLegacyProxyApiKey() {
+    const config = vscode.workspace.getConfiguration(CONFIG_PREFIX);
+    const inspected = config.inspect("proxyApiKey");
+    const legacyValues = [
+      typeof inspected?.globalValue === "string" ? inspected.globalValue.trim() : "",
+      typeof inspected?.workspaceValue === "string" ? inspected.workspaceValue.trim() : "",
+      typeof inspected?.workspaceFolderValue === "string"
+        ? inspected.workspaceFolderValue.trim()
+        : "",
+    ].filter(Boolean);
+
+    if (legacyValues.length === 0) {
+      return false;
+    }
+
+    const existing = await this.context.secrets.get(PROXY_API_KEY_SECRET);
+    if (!existing) {
+      await this.context.secrets.store(PROXY_API_KEY_SECRET, legacyValues[0]);
+    }
+
+    const updates = [];
+    if (typeof inspected?.globalValue !== "undefined") {
+      updates.push(config.update("proxyApiKey", undefined, vscode.ConfigurationTarget.Global));
+    }
+    if (typeof inspected?.workspaceValue !== "undefined") {
+      updates.push(config.update("proxyApiKey", undefined, vscode.ConfigurationTarget.Workspace));
+    }
+    if (
+      typeof inspected?.workspaceFolderValue !== "undefined" &&
+      vscode.workspace.workspaceFolders?.[0]
+    ) {
+      updates.push(
+        vscode.workspace
+          .getConfiguration(CONFIG_PREFIX, vscode.workspace.workspaceFolders[0].uri)
+          .update("proxyApiKey", undefined, vscode.ConfigurationTarget.WorkspaceFolder),
+      );
+    }
+
+    await Promise.allSettled(updates);
+    return !existing;
+  }
+
+  async handleConfigurationChange(event) {
+    if (!event.affectsConfiguration(CONFIG_PREFIX)) {
+      return;
+    }
+
+    const forceRefresh = ["projectHome", "fastScan"].some(
+      (key) =>
+        shouldForceSnapshotRefresh(key) &&
+        event.affectsConfiguration(`${CONFIG_PREFIX}.${key}`),
+    );
+
+    if (event.affectsConfiguration(`${CONFIG_PREFIX}.autoRefreshHours`)) {
+      this.state.autoRefreshMs = this.getAutoRefreshMs();
+      this.resetRefreshTimer();
+    }
+
+    if (forceRefresh) {
+      this.invalidateCache();
+    }
+
+    if (!forceRefresh) {
+      const projectHome = await this.resolveProjectHome();
+      if (this.cachedSnapshot && projectHome && this.cachedProjectHome === projectHome) {
+        this.state = this.composeState(
+          this.cachedSnapshot,
+          projectHome,
+          this.getAutoRefreshMs(),
+        );
+        this.updateStatusBar();
+        await this.pushState();
+        return;
+      }
+    }
+
+    await this.refresh(forceRefresh, true);
+  }
+
   async handleMessage(message) {
     switch (message?.type) {
       case "ready":
@@ -311,8 +421,10 @@ class MultiCodexController {
   }
 
   async buildState(force = false) {
+    await this.proxyReady;
     const projectHome = await this.resolveProjectHome();
     const autoRefreshMs = this.getAutoRefreshMs();
+    const proxy = this.getProxyLaunchOptions();
 
     if (!projectHome) {
       return {
@@ -324,6 +436,9 @@ class MultiCodexController {
         autoRefreshMs,
         viewMode: this.getViewMode(),
         sortOrder: this.getSortOrder(),
+        proxyMode: proxy.mode,
+        proxySummary: proxy.summary,
+        launchRequiresConnectedSlot: proxy.requiresSlotLogin,
         summary: null,
         accounts: [],
       };
@@ -352,8 +467,9 @@ class MultiCodexController {
 
   composeState(snapshot, projectHome, autoRefreshMs) {
     const sortOrder = this.getSortOrder();
+    const proxy = this.getProxyLaunchOptions();
     const accounts = sortAccounts(snapshot.accounts || [], sortOrder).map((account, _, all) =>
-      normalizeAccount(account, all),
+      normalizeAccount(account, all, proxy),
     );
     const activeSlug = this.resolveActiveSlug(accounts);
     this.syncTerminalEnvironment(accounts, activeSlug);
@@ -367,6 +483,9 @@ class MultiCodexController {
       autoRefreshMs,
       viewMode: this.getViewMode(),
       sortOrder,
+      proxyMode: proxy.mode,
+      proxySummary: proxy.summary,
+      launchRequiresConnectedSlot: proxy.requiresSlotLogin,
       summary: snapshot.summary,
       accounts,
     };
@@ -521,11 +640,15 @@ class MultiCodexController {
     }
 
     const candidate = picked[0].fsPath;
-    if (!isAccountStoreHome(candidate)) {
+    const selectionKind = getProjectHomeSelectionKind(candidate);
+    if (!selectionKind) {
       void vscode.window.showErrorMessage(
-        "That folder does not look like a multi-codex account store. It must contain accounts/ or be an existing multi-codex project root.",
+        "That folder must already be a multi-codex account store or be completely empty.",
       );
       return;
+    }
+    if (selectionKind === "empty") {
+      fs.mkdirSync(path.join(candidate, "accounts"), { recursive: true });
     }
 
     await vscode.workspace
@@ -549,6 +672,51 @@ class MultiCodexController {
     } catch (error) {
       void vscode.window.showErrorMessage(error.message || String(error));
     }
+  }
+
+  async setProxyApiKey() {
+    await this.proxyReady;
+    const currentLabel = this.proxyApiKey ? "stored" : "not stored";
+    const input = await vscode.window.showInputBox({
+      prompt: "Store the proxy API key in VS Code Secret Storage",
+      placeHolder: `Current status: ${currentLabel}`,
+      password: true,
+      ignoreFocusOut: true,
+      validateInput: (value) =>
+        String(value || "").trim()
+          ? null
+          : "Enter a non-empty API key, or cancel and use the clear command instead.",
+    });
+    if (!input) {
+      return;
+    }
+
+    this.proxyApiKey = input.trim();
+    await this.context.secrets.store(PROXY_API_KEY_SECRET, this.proxyApiKey);
+    await this.refresh(false, true);
+    void vscode.window.showInformationMessage("Stored the Multi Codex proxy API key.");
+  }
+
+  async clearProxyApiKey() {
+    await this.proxyReady;
+    if (!this.proxyApiKey) {
+      void vscode.window.showInformationMessage("No Multi Codex proxy API key is stored.");
+      return;
+    }
+
+    const confirmed = await vscode.window.showWarningMessage(
+      "Clear the stored Multi Codex proxy API key from VS Code Secret Storage?",
+      { modal: true },
+      "Clear",
+    );
+    if (confirmed !== "Clear") {
+      return;
+    }
+
+    this.proxyApiKey = "";
+    await this.context.secrets.delete(PROXY_API_KEY_SECRET);
+    await this.refresh(false, true);
+    void vscode.window.showInformationMessage("Cleared the Multi Codex proxy API key.");
   }
 
   async setViewMode(value) {
@@ -611,8 +779,17 @@ class MultiCodexController {
     if (!account) {
       return;
     }
+    await this.proxyReady;
+    const proxy = this.getProxyLaunchOptions();
+    if (proxy.issues.length > 0) {
+      void vscode.window.showErrorMessage(proxy.issues[0]);
+      return;
+    }
+    if (!this.ensureSlotActionAllowed(account, "open", proxy.requiresSlotLogin)) {
+      return;
+    }
     await this.setActiveSlot(account.slug);
-    this.openTerminal(account, this.buildPrimaryLaunchCommand(account));
+    this.openTerminal(account, this.buildPrimaryLaunchCommand(proxy), proxy.env);
   }
 
   async launchLoginForSlot(slug) {
@@ -629,18 +806,28 @@ class MultiCodexController {
     if (!account) {
       return;
     }
-    await this.setActiveSlot(account.slug);
-    this.openTerminal(account, `${this.buildCodexLaunchPrefix()} resume --all`);
-  }
-
-  buildPrimaryLaunchCommand(account) {
-    if (Number(account?.sessionFiles || 0) > 0) {
-      return `${this.buildCodexLaunchPrefix()} resume --last --all`;
+    await this.proxyReady;
+    const proxy = this.getProxyLaunchOptions();
+    if (proxy.issues.length > 0) {
+      void vscode.window.showErrorMessage(proxy.issues[0]);
+      return;
     }
-    return this.buildCodexLaunchPrefix();
+    if (!this.ensureSlotActionAllowed(account, "resume", proxy.requiresSlotLogin)) {
+      return;
+    }
+    await this.setActiveSlot(account.slug);
+    this.openTerminal(
+      account,
+      buildSlotLaunchCommand(this.buildCodexLaunchPrefix(proxy), "resume"),
+      proxy.env,
+    );
   }
 
-  buildCodexLaunchPrefix() {
+  buildPrimaryLaunchCommand(proxy) {
+    return buildSlotLaunchCommand(this.buildCodexLaunchPrefix(proxy), "open");
+  }
+
+  buildCodexLaunchPrefix(proxy = this.getProxyLaunchOptions()) {
     const parts = [this.getCodexCommand()];
 
     if (this.getBypassApprovalsAndSandbox()) {
@@ -657,10 +844,24 @@ class MultiCodexController {
       parts.push("-c", shellQuote(`model_reasoning_effort="${reasoningEffort}"`));
     }
 
+    const serviceTier = this.getDefaultServiceTier();
+    if (serviceTier) {
+      parts.push("-c", shellQuote(`service_tier="${serviceTier}"`));
+    }
+
+    const statusLine = this.getDefaultStatusLine();
+    if (statusLine.length > 0) {
+      parts.push("-c", shellQuote(`tui.status_line=${formatTomlStringArray(statusLine)}`));
+    }
+
+    for (const entry of proxy.configEntries || []) {
+      parts.push("-c", shellQuote(entry));
+    }
+
     return parts.join(" ");
   }
 
-  openTerminal(account, command) {
+  openTerminal(account, command, extraEnv = {}) {
     const cwd =
       vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ||
       this.state.projectHome ||
@@ -671,6 +872,7 @@ class MultiCodexController {
       cwd,
       env: {
         CODEX_HOME: account.homeDir,
+        ...extraEnv,
       },
     };
     if (this.getTerminalLocation() === "editor") {
@@ -691,12 +893,31 @@ class MultiCodexController {
       return null;
     }
 
-    const account = (this.state.accounts || []).find((item) => item.slug === slug);
+    const targetSlug = slug || this.state.activeSlug;
+    if (!targetSlug) {
+      void vscode.window.showInformationMessage("Choose a multi-codex slot first.");
+      return null;
+    }
+
+    const account = (this.state.accounts || []).find((item) => item.slug === targetSlug);
     if (!account) {
       void vscode.window.showErrorMessage("That multi-codex slot is no longer available.");
       return null;
     }
     return account;
+  }
+
+  ensureSlotActionAllowed(account, action, requiresSlotLogin) {
+    const actionState = getSlotActionState(account, { requiresSlotLogin });
+    const blockedReason =
+      action === "resume" ? actionState.resumeBlockedReason : actionState.openBlockedReason;
+
+    if (!blockedReason) {
+      return true;
+    }
+
+    void vscode.window.showWarningMessage(blockedReason);
+    return false;
   }
 
   async pickAccount(placeHolder) {
@@ -910,12 +1131,54 @@ Click to quick switch`;
     return raw || "xhigh";
   }
 
+  getDefaultServiceTier() {
+    const raw = String(
+      vscode.workspace
+        .getConfiguration(CONFIG_PREFIX)
+        .get("defaultServiceTier", "fast"),
+    ).trim();
+    return raw || "fast";
+  }
+
+  getDefaultStatusLine() {
+    const raw = vscode.workspace
+      .getConfiguration(CONFIG_PREFIX)
+      .get("defaultStatusLine", DEFAULT_STATUS_LINE);
+    if (!Array.isArray(raw)) {
+      return [...DEFAULT_STATUS_LINE];
+    }
+
+    const cleaned = raw
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+
+    return cleaned.length > 0 ? cleaned : [...DEFAULT_STATUS_LINE];
+  }
+
   getBypassApprovalsAndSandbox() {
     return Boolean(
       vscode.workspace
         .getConfiguration(CONFIG_PREFIX)
         .get("bypassApprovalsAndSandbox", true),
     );
+  }
+
+  getProxyLaunchOptions() {
+    return resolveProxyLaunchOptions({
+      mode: vscode.workspace
+        .getConfiguration(CONFIG_PREFIX)
+        .get("proxyMode", DEFAULT_PROXY_MODE),
+      baseUrl: vscode.workspace
+        .getConfiguration(CONFIG_PREFIX)
+        .get("proxyBaseUrl", ""),
+      providerId: vscode.workspace
+        .getConfiguration(CONFIG_PREFIX)
+        .get("proxyProviderId", DEFAULT_PROXY_PROVIDER_ID),
+      envKey: vscode.workspace
+        .getConfiguration(CONFIG_PREFIX)
+        .get("proxyEnvKey", DEFAULT_PROXY_ENV_KEY),
+      apiKey: this.proxyApiKey,
+    });
   }
 
   getViewMode() {
@@ -979,8 +1242,8 @@ Click to quick switch`;
   }
 }
 
-function normalizeAccount(account, accounts) {
-  return {
+function normalizeAccount(account, accounts, proxy) {
+  const normalized = {
     slug: account.slug,
     title: resolveAccountTitle(account, accounts),
     homeDir: account.homeDir,
@@ -1003,6 +1266,13 @@ function normalizeAccount(account, accounts) {
     subscriptionActiveUntil: account.auth?.subscriptionActiveUntil || null,
     quotaFetchedAt:
       account.remoteUsage?.fetchedAt || account.auth?.lastRefresh || null,
+  };
+
+  return {
+    ...normalized,
+    ...getSlotActionState(normalized, {
+      requiresSlotLogin: proxy?.requiresSlotLogin,
+    }),
   };
 }
 
@@ -1046,6 +1316,10 @@ function sortAccounts(accounts, sortOrder = "asc") {
 
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function formatTomlStringArray(values) {
+  return `[${values.map((value) => JSON.stringify(String(value))).join(",")}]`;
 }
 
 function resolveAccountTitle(account, accounts) {
@@ -1142,18 +1416,6 @@ function formatDateTime(value) {
     return String(value);
   }
   return date.toLocaleString();
-}
-
-function isAccountStoreHome(candidate) {
-  if (!candidate) {
-    return false;
-  }
-
-  const home = path.resolve(candidate);
-  return (
-    fs.existsSync(path.join(home, "accounts")) ||
-    fs.existsSync(path.join(home, "lib", "core.js"))
-  );
 }
 
 function createNonce() {

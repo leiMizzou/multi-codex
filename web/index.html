@@ -87,9 +87,69 @@
             <ol class="guide-steps">
               <li>Create a slot named after the team, workspace, or subscription you want to preserve.</li>
               <li>Open ChatGPT or Settings, then manually switch to the target team or subscription in the browser.</li>
-              <li>On that slot card, click <strong>Launch Codex Login</strong> to open a terminal window bound to that slot’s <code>CODEX_HOME</code>.</li>
-              <li>Complete the login manually, return here, and refresh. That slot will stay isolated and can be aggregated with the rest.</li>
+              <li>On that slot card, click the launch button. In normal mode it opens <code>codex login</code>; with proxy routing it opens <code>codex</code> using the saved router settings.</li>
+              <li>If the launch used login, complete it manually, return here, and refresh. If the launch used a proxy API key, the slot can stay auth-empty and still open isolated sessions.</li>
             </ol>
+          </section>
+          <section class="proxy-panel">
+            <div class="section-head">
+              <div>
+                <p class="section-kicker">Proxy routing</p>
+                <h3>Route dashboard launches through your own endpoint</h3>
+              </div>
+              <span id="proxy-mode-pill" class="table-pill" data-tone="muted">Proxy off</span>
+            </div>
+            <p class="action-copy">
+              These settings are saved only for this local project and affect the dashboard launch button.
+              Use <code>OPENAI_BASE_URL</code> for a lightweight router, or a custom provider for
+              OpenAI-compatible reverse proxies such as <code>CLIProxyAPI</code>.
+            </p>
+            <form id="proxy-form" class="proxy-form">
+              <label class="field">
+                <span>Proxy mode</span>
+                <select id="proxy-mode">
+                  <option value="off">Off</option>
+                  <option value="openaiBaseUrl">OPENAI_BASE_URL</option>
+                  <option value="customProvider">Custom provider</option>
+                </select>
+              </label>
+              <label class="field proxy-field-wide">
+                <span>Base URL</span>
+                <input id="proxy-base-url" type="url" placeholder="http://127.0.0.1:8317" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>Provider ID</span>
+                <input id="proxy-provider-id" type="text" placeholder="cliproxyapi" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>Env key</span>
+                <input id="proxy-env-key" type="text" placeholder="OPENAI_API_KEY" autocomplete="off" />
+              </label>
+              <label class="field proxy-field-wide">
+                <span>API key</span>
+                <input id="proxy-api-key" type="password" placeholder="Leave blank to keep the saved key" autocomplete="off" />
+              </label>
+              <label class="field proxy-field-wide">
+                <span>Local start command</span>
+                <input id="proxy-start-command" type="text" placeholder="cliproxyapi --config ./config.yaml" autocomplete="off" />
+              </label>
+              <label class="field proxy-field-wide">
+                <span>Local start cwd</span>
+                <input id="proxy-start-cwd" type="text" placeholder="/absolute/path/to/proxy" autocomplete="off" />
+              </label>
+              <div class="proxy-actions">
+                <button id="save-proxy-button" class="button" type="submit">Save proxy</button>
+                <button id="test-proxy-button" class="button ghost-dark" type="button">Test proxy</button>
+                <button id="start-proxy-button" class="button ghost-dark" type="button">Start proxy</button>
+                <button id="disable-proxy-button" class="button ghost-dark" type="button">Turn off</button>
+              </div>
+            </form>
+            <div id="proxy-summary" class="proxy-summary">Proxy off</div>
+            <div id="proxy-test-result" class="proxy-test-result hidden"></div>
+            <div class="proxy-notes">
+              <span class="note-chip">Responses API only</span>
+              <span class="note-chip">Codex ignores temperature / top_p / top_k here</span>
+            </div>
           </section>
           <section class="snapshot-panel">
             <div class="section-head">

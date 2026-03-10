@@ -8,6 +8,9 @@ const state = vscode.getState() || {
   autoRefreshMs: 0,
   viewMode: "standard",
   sortOrder: "asc",
+  proxyMode: "off",
+  proxySummary: "Proxy off",
+  launchRequiresConnectedSlot: true,
   summary: null,
   accounts: [],
 };
@@ -104,6 +107,10 @@ function render() {
 function renderToolbar() {
   const section = document.createElement("section");
   section.className = "toolbar";
+  const activeAccount = (state.accounts || []).find((account) => account.slug === state.activeSlug);
+  const disableOpen = !activeAccount || activeAccount.canOpen === false;
+  const disableResume = !activeAccount || activeAccount.canResume === false;
+  const disableLogin = !activeAccount;
 
   if (state.viewMode === "minimal") {
     section.classList.add("toolbar-minimal");
@@ -123,7 +130,7 @@ function renderToolbar() {
   copy.innerHTML = `
     <p class="eyebrow">multi-codex vscode</p>
     <h2>${escapeHtml(getActiveTitle())}</h2>
-    <div class="toolbar-meta">${escapeHtml(state.projectHome || "No project home selected")}<br>Open resumes the latest slot session when local history exists. Auto refresh ${escapeHtml(formatDuration(state.autoRefreshMs))} · manual refresh for immediate quota updates</div>
+    <div class="toolbar-meta">${escapeHtml(state.projectHome || "No project home selected")}<br>${escapeHtml(state.proxySummary || "Proxy off")}<br>Open starts a fresh Codex session. Resume continues the latest slot session when local history exists. Auto refresh ${escapeHtml(formatDuration(state.autoRefreshMs))} · manual refresh for immediate quota updates</div>
   `;
 
   const actions = document.createElement("div");
@@ -133,9 +140,15 @@ function renderToolbar() {
   actions.appendChild(makeButton("New", "createSlot", null, "action"));
   actions.appendChild(makeButton("Import", "importCurrent", null, "secondary"));
   actions.appendChild(makeButton("Home", "selectProjectHome", null, "ghost"));
-  actions.appendChild(makeButton("Open", "launchActiveCodex", state.activeSlug, "action"));
-  actions.appendChild(makeButton("Resume", "resumeActiveSlot", state.activeSlug, "secondary"));
-  actions.appendChild(makeButton("Login", "loginActiveSlot", state.activeSlug, "ghost"));
+  actions.appendChild(
+    makeButton("Open", "launchActiveCodex", state.activeSlug, "action", disableOpen),
+  );
+  actions.appendChild(
+    makeButton("Resume", "resumeActiveSlot", state.activeSlug, "secondary", disableResume),
+  );
+  actions.appendChild(
+    makeButton("Login", "loginActiveSlot", state.activeSlug, "ghost", disableLogin),
+  );
   top.append(copy, actions);
   section.appendChild(top);
   section.appendChild(renderModePicker());
@@ -269,15 +282,18 @@ function renderCardContent(account, mode) {
 }
 
 function buildCardActions(account, mode) {
+  const disableOpen = account.canOpen === false;
+  const disableResume = account.canResume === false;
+
   if (mode === "minimal") {
-    return [makeButton("Use + Open", "launchCodex", account.slug, "action", !account.connected)];
+    return [makeButton("Use + Open", "launchCodex", account.slug, "action", disableOpen)];
   }
 
   if (mode === "detailed") {
     return [
       makeButton("Use", "activateSlot", account.slug, "secondary"),
-      makeButton("Use + Open", "launchCodex", account.slug, "action", !account.connected),
-      makeButton("Use + Resume", "resumeSlot", account.slug, "secondary", !account.connected || Number(account.sessionFiles || 0) === 0),
+      makeButton("Use + Open", "launchCodex", account.slug, "action", disableOpen),
+      makeButton("Use + Resume", "resumeSlot", account.slug, "secondary", disableResume),
       makeButton("Use + Login", "loginSlot", account.slug, "ghost"),
       makeButton("Delete", "removeSlot", account.slug, "ghost"),
     ];
@@ -285,8 +301,8 @@ function buildCardActions(account, mode) {
 
   return [
     makeButton("Use", "activateSlot", account.slug, "secondary"),
-    makeButton("Use + Open", "launchCodex", account.slug, "action", !account.connected),
-    makeButton("Use + Resume", "resumeSlot", account.slug, "secondary", !account.connected || Number(account.sessionFiles || 0) === 0),
+    makeButton("Use + Open", "launchCodex", account.slug, "action", disableOpen),
+    makeButton("Use + Resume", "resumeSlot", account.slug, "secondary", disableResume),
     makeButton("Use + Login", "loginSlot", account.slug, "ghost"),
   ];
 }
