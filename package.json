@@ -2,7 +2,7 @@
   "name": "multi-codex",
   "displayName": "Multi Codex",
   "publisher": "local-tools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Local multi-account Codex manager built on top of CODEX_HOME isolation.",
   "keywords": [
@@ -26,6 +26,7 @@
     "onCommand:multiCodex.removeSlot",
     "onCommand:multiCodex.setViewMode",
     "onCommand:multiCodex.toggleSortOrder",
+    "onCommand:multiCodex.toggleFastMode",
     "onCommand:multiCodex.selectProjectHome",
     "onCommand:multiCodex.useManagedStorage",
     "onCommand:multiCodex.quickSwitch",
@@ -82,6 +83,10 @@
       {
         "command": "multiCodex.toggleSortOrder",
         "title": "Multi Codex: Toggle 5h Sort"
+      },
+      {
+        "command": "multiCodex.toggleFastMode",
+        "title": "Multi Codex: Toggle Fast Mode"
       },
       {
         "command": "multiCodex.selectProjectHome",
@@ -174,19 +179,24 @@
           "group": "navigation@5"
         },
         {
-          "command": "multiCodex.quickLaunch",
+          "command": "multiCodex.toggleFastMode",
           "when": "view == multiCodex.sidebar",
           "group": "navigation@6"
         },
         {
-          "command": "multiCodex.openPanel",
+          "command": "multiCodex.quickLaunch",
           "when": "view == multiCodex.sidebar",
           "group": "navigation@7"
         },
         {
-          "command": "multiCodex.resumeActiveSlot",
+          "command": "multiCodex.openPanel",
           "when": "view == multiCodex.sidebar",
           "group": "navigation@8"
+        },
+        {
+          "command": "multiCodex.resumeActiveSlot",
+          "when": "view == multiCodex.sidebar",
+          "group": "navigation@9"
         }
       ],
       "commandPalette": [
@@ -212,6 +222,10 @@
         },
         {
           "command": "multiCodex.toggleSortOrder",
+          "when": "true"
+        },
+        {
+          "command": "multiCodex.toggleFastMode",
           "when": "true"
         },
         {
@@ -346,6 +360,10 @@
         "multiCodex.defaultServiceTier": {
           "type": "string",
           "default": "fast",
+          "enum": [
+            "fast",
+            "flex"
+          ],
           "description": "Default service tier passed via -c service_tier=... for interactive Codex launches."
         },
         "multiCodex.defaultStatusLine": {

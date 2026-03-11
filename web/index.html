@@ -14,16 +14,16 @@
     <div class="scene">
       <header class="hero shell">
         <div class="hero-copy">
-          <p class="eyebrow">multi-codex local dashboard</p>
-          <h1>One screen for every connected Codex account.</h1>
+          <p class="eyebrow">multi-codex dashboard</p>
+          <h1>Multi-account Codex, one clean control surface.</h1>
           <p class="lede">
-            This dashboard reads each isolated <code>CODEX_HOME</code>, then maps account health,
-            plan metadata, local token usage, and the last observed refresh state.
+            Manage isolated <code>CODEX_HOME</code> slots, launch through a local proxy, and keep
+            account health, quota windows, labels, and local usage in one place.
           </p>
         </div>
         <div class="hero-panel">
           <div class="panel-head">
-            <span class="panel-title">Live pulse</span>
+            <span class="panel-title">Snapshot</span>
             <div class="panel-actions">
               <button id="refresh-button" class="button ghost" type="button">Refresh now</button>
               <label class="toggle">
@@ -44,8 +44,8 @@
         <section class="accounts-column">
           <div class="section-head">
             <div>
-              <p class="section-kicker">Account matrix</p>
-              <h2>Connected account surfaces</h2>
+              <p class="section-kicker">Account overview</p>
+              <h2>Slots, launches, and saved state</h2>
             </div>
             <div class="section-tools">
               <button id="json-toggle" class="button" type="button">Toggle JSON</button>
@@ -53,11 +53,11 @@
           </div>
           <section class="action-panel">
             <div>
-              <p class="section-kicker">Connect more</p>
-              <h3>Attach another account home</h3>
+              <p class="section-kicker">Add slot</p>
+              <h3>Create a new isolated Codex home</h3>
               <p class="action-copy">
-                Create an empty slot for a future login, or import the current global
-                <code>~/.codex</code> session into a named slot.
+                Create a fresh slot for a future login, or import the current global
+                <code>~/.codex</code> session into a named home first.
               </p>
             </div>
             <form id="account-form" class="action-form">
@@ -72,37 +72,54 @@
             </form>
             <div id="feedback-banner" class="feedback-banner hidden"></div>
           </section>
+          <section class="surface-panel">
+            <div class="section-head">
+              <div>
+                <p class="section-kicker">Quick links</p>
+                <h3>Open the pages you usually touch during setup</h3>
+              </div>
+            </div>
+            <div class="surface-grid">
+              <button id="open-chatgpt-button" class="surface-tile" type="button">
+                <span class="surface-label">ChatGPT</span>
+                <strong>Open chat and switch account context</strong>
+              </button>
+              <button id="open-settings-button" class="surface-tile" type="button">
+                <span class="surface-label">Settings</span>
+                <strong>Jump to account and plan settings</strong>
+              </button>
+              <button id="open-usage-button" class="surface-tile" type="button">
+                <span class="surface-label">Codex usage</span>
+                <strong>Review live Codex quota in the browser</strong>
+              </button>
+            </div>
+          </section>
           <section class="guide-panel">
             <div class="guide-head">
               <div>
-                <p class="section-kicker">Guided capture</p>
-                <h3>Save each team or subscription into its own slot</h3>
-              </div>
-              <div class="guide-actions">
-                <button id="open-chatgpt-button" class="button ghost-dark" type="button">Open ChatGPT</button>
-                <button id="open-settings-button" class="button ghost-dark" type="button">Open Settings</button>
-                <button id="open-usage-button" class="button ghost-dark" type="button">Open Codex Usage</button>
+                <p class="section-kicker">Recommended flow</p>
+                <h3>Capture each team or subscription once, then reuse it</h3>
               </div>
             </div>
             <ol class="guide-steps">
               <li>Create a slot named after the team, workspace, or subscription you want to preserve.</li>
               <li>Open ChatGPT or Settings, then manually switch to the target team or subscription in the browser.</li>
-              <li>On that slot card, click the launch button. In normal mode it opens <code>codex login</code>; with proxy routing it opens <code>codex</code> using the saved router settings.</li>
-              <li>If the launch used login, complete it manually, return here, and refresh. If the launch used a proxy API key, the slot can stay auth-empty and still open isolated sessions.</li>
+              <li>In normal mode, use the slot launch button to open <code>codex login</code>. In proxy mode, the same button opens <code>codex</code> with the saved provider settings.</li>
+              <li>After login or proxy validation, refresh the dashboard. The slot remains isolated and reusable.</li>
             </ol>
           </section>
           <section class="proxy-panel">
             <div class="section-head">
               <div>
                 <p class="section-kicker">Proxy routing</p>
-                <h3>Route dashboard launches through your own endpoint</h3>
+                <h3>Point launches at your own OpenAI-compatible endpoint</h3>
               </div>
               <span id="proxy-mode-pill" class="table-pill" data-tone="muted">Proxy off</span>
             </div>
             <p class="action-copy">
-              These settings are saved only for this local project and affect the dashboard launch button.
-              Use <code>OPENAI_BASE_URL</code> for a lightweight router, or a custom provider for
-              OpenAI-compatible reverse proxies such as <code>CLIProxyAPI</code>.
+              These settings are saved only for this local project and affect the dashboard launch
+              button. Use <code>OPENAI_BASE_URL</code> for a lightweight router, or
+              <code>Custom provider</code> for tools such as <code>CLIProxyAPI</code>.
             </p>
             <form id="proxy-form" class="proxy-form">
               <label class="field">
@@ -151,17 +168,25 @@
               <span class="note-chip">Codex ignores temperature / top_p / top_k here</span>
             </div>
           </section>
+          <section class="workspace-panel">
+            <div class="section-head">
+              <div>
+                <p class="section-kicker">Slot workspace</p>
+                <h3>Browse one slot at a time, keep everything else nearby</h3>
+              </div>
+            </div>
+            <div id="accounts-grid" class="accounts-grid"></div>
+          </section>
           <section class="snapshot-panel">
             <div class="section-head">
               <div>
                 <p class="section-kicker">Connected snapshot</p>
-                <h3>What the saved auth already tells us</h3>
+                <h3>Live quota and identity details for connected slots</h3>
               </div>
             </div>
             <p class="action-copy">
-              This view compares only the connected slots. It combines each slot’s saved auth with
-              the live OpenAI usage window API, with a local Codex RPC fallback when needed, so you
-              can see 5-hour and weekly remaining quota next to the local slot labels you saved.
+              This table compares only connected slots. It combines saved auth with the live OpenAI
+              usage window API, with a local Codex RPC fallback when needed.
             </p>
             <div class="table-wrap">
               <table class="snapshot-table">
@@ -184,20 +209,19 @@
               </table>
             </div>
           </section>
-          <div id="accounts-grid" class="accounts-grid"></div>
           <section id="empty-state" class="empty-state hidden"></section>
         </section>
 
         <aside class="sidebar">
           <section class="sidebar-card">
             <p class="section-kicker">Project home</p>
-            <h3>Runtime context</h3>
+            <h3>Local store</h3>
             <div id="project-home" class="path-block">-</div>
           </section>
 
           <section class="sidebar-card">
-            <p class="section-kicker">What this means</p>
-            <h3>Status semantics</h3>
+            <p class="section-kicker">Status guide</p>
+            <h3>Health states</h3>
             <ul class="legend-list">
               <li><span class="legend-dot good"></span><strong>Online</strong><span>Access token still valid.</span></li>
               <li><span class="legend-dot warn"></span><strong>Refreshable</strong><span>Refresh token exists, access may rotate on demand.</span></li>
@@ -207,8 +231,8 @@
           </section>
 
           <section class="sidebar-card">
-            <p class="section-kicker">Raw payload</p>
-            <h3>API snapshot</h3>
+            <p class="section-kicker">Debug view</p>
+            <h3>Raw API snapshot</h3>
             <pre id="raw-json" class="raw-json hidden"></pre>
           </section>
         </aside>

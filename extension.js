@@ -16,6 +16,9 @@ const {
   DEFAULT_PROXY_MODE,
   DEFAULT_PROXY_PROVIDER_ID,
   DEFAULT_PROXY_ENV_KEY,
+  DEFAULT_SERVICE_TIER,
+  FLEX_SERVICE_TIER,
+  normalizeServiceTier,
   resolveProxyLaunchOptions,
 } = require("./lib/launch");
 const {
@@ -23,6 +26,7 @@ const {
   getProjectHomeSelectionKind,
   getSlotActionState,
   isAccountStoreHome,
+  resolveAccountStoreHome,
   shouldForceSnapshotRefresh,
 } = require("./lib/extension-support");
 
@@ -59,6 +63,7 @@ class MultiCodexController {
       autoRefreshMs: this.getAutoRefreshMs(),
       viewMode: this.getViewMode(),
       sortOrder: this.getSortOrder(),
+      fastModeEnabled: this.getFastModeEnabled(),
       proxyMode: DEFAULT_PROXY_MODE,
       proxySummary: "Proxy off",
       launchRequiresConnectedSlot: true,
@@ -103,6 +108,9 @@ class MultiCodexController {
       ),
       vscode.commands.registerCommand("multiCodex.toggleSortOrder", () =>
         this.toggleSortOrder(),
+      ),
+      vscode.commands.registerCommand("multiCodex.toggleFastMode", () =>
+        this.toggleFastMode(),
       ),
       vscode.commands.registerCommand("multiCodex.selectProjectHome", () =>
         this.selectProjectHome(),
@@ -366,6 +374,9 @@ class MultiCodexController {
       case "toggleSortOrder":
         await this.toggleSortOrder();
         return;
+      case "toggleFastMode":
+        await this.toggleFastMode();
+        return;
       case "createSlot":
         await this.createSlot();
         return;
@@ -436,6 +447,7 @@ class MultiCodexController {
         autoRefreshMs,
         viewMode: this.getViewMode(),
         sortOrder: this.getSortOrder(),
+        fastModeEnabled: this.getFastModeEnabled(),
         proxyMode: proxy.mode,
         proxySummary: proxy.summary,
         launchRequiresConnectedSlot: proxy.requiresSlotLogin,
@@ -483,6 +495,7 @@ class MultiCodexController {
       autoRefreshMs,
       viewMode: this.getViewMode(),
       sortOrder,
+      fastModeEnabled: this.getFastModeEnabled(),
       proxyMode: proxy.mode,
       proxySummary: proxy.summary,
       launchRequiresConnectedSlot: proxy.requiresSlotLogin,
@@ -647,13 +660,23 @@ class MultiCodexController {
       );
       return;
     }
+    const nextProjectHome =
+      selectionKind === "empty"
+        ? path.resolve(candidate)
+        : resolveAccountStoreHome(candidate);
+    if (!nextProjectHome) {
+      void vscode.window.showErrorMessage(
+        "That folder could not be mapped back to a valid multi-codex account store.",
+      );
+      return;
+    }
     if (selectionKind === "empty") {
-      fs.mkdirSync(path.join(candidate, "accounts"), { recursive: true });
+      fs.mkdirSync(path.join(nextProjectHome, "accounts"), { recursive: true });
     }
 
     await vscode.workspace
       .getConfiguration(CONFIG_PREFIX)
-      .update("projectHome", candidate, vscode.ConfigurationTarget.Global);
+      .update("projectHome", nextProjectHome, vscode.ConfigurationTarget.Global);
     this.invalidateCache();
     await this.refresh(true);
   }
@@ -743,6 +766,18 @@ class MultiCodexController {
       .update(SORT_ORDER_CONFIG_KEY, next, vscode.ConfigurationTarget.Global);
   }
 
+  async toggleFastMode() {
+    const next = this.getFastModeEnabled() ? FLEX_SERVICE_TIER : DEFAULT_SERVICE_TIER;
+    this.state = {
+      ...this.state,
+      fastModeEnabled: next === DEFAULT_SERVICE_TIER,
+    };
+    await this.pushState();
+    await vscode.workspace
+      .getConfiguration(CONFIG_PREFIX)
+      .update("defaultServiceTier", next, vscode.ConfigurationTarget.Global);
+  }
+
   async pickViewMode() {
     const current = this.getViewMode();
     const picked = await vscode.window.showQuickPick(
@@ -798,7 +833,10 @@ class MultiCodexController {
       return;
     }
     await this.setActiveSlot(account.slug);
-    this.openTerminal(account, `${this.getCodexCommand()} login`);
+    this.openTerminal(
+      account,
+      `${this.getCodexCommand()} -C ${shellQuote(this.getLaunchCwd(account))} login`,
+    );
   }
 
   async launchResumeForSlot(slug) {
@@ -818,13 +856,19 @@ class MultiCodexController {
     await this.setActiveSlot(account.slug);
     this.openTerminal(
       account,
-      buildSlotLaunchCommand(this.buildCodexLaunchPrefix(proxy), "resume"),
+      buildSlotLaunchCommand(this.buildCodexLaunchPrefix(proxy), {
+        action: "resume",
+        cwd: this.getLaunchCwd(account),
+      }),
       proxy.env,
     );
   }
 
   buildPrimaryLaunchCommand(proxy) {
-    return buildSlotLaunchCommand(this.buildCodexLaunchPrefix(proxy), "open");
+    return buildSlotLaunchCommand(this.buildCodexLaunchPrefix(proxy), {
+      action: "open",
+      cwd: this.getLaunchCwd(),
+    });
   }
 
   buildCodexLaunchPrefix(proxy = this.getProxyLaunchOptions()) {
@@ -862,10 +906,7 @@ class MultiCodexController {
   }
 
   openTerminal(account, command, extraEnv = {}) {
-    const cwd =
-      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ||
-      this.state.projectHome ||
-      account.homeDir;
+    const cwd = this.getLaunchCwd(account);
     const targetViewColumn = vscode.ViewColumn.One;
     const terminalOptions = {
       name: `Codex · ${account.title}`,
@@ -1013,8 +1054,9 @@ class MultiCodexController {
       if (!candidate) {
         continue;
       }
-      if (isAccountStoreHome(candidate)) {
-        return path.resolve(candidate);
+      const projectHome = resolveAccountStoreHome(candidate);
+      if (projectHome && isAccountStoreHome(projectHome)) {
+        return projectHome;
       }
     }
 
@@ -1135,9 +1177,13 @@ Click to quick switch`;
     const raw = String(
       vscode.workspace
         .getConfiguration(CONFIG_PREFIX)
-        .get("defaultServiceTier", "fast"),
+        .get("defaultServiceTier", DEFAULT_SERVICE_TIER),
     ).trim();
-    return raw || "fast";
+    return normalizeServiceTier(raw);
+  }
+
+  getFastModeEnabled() {
+    return this.getDefaultServiceTier() === DEFAULT_SERVICE_TIER;
   }
 
   getDefaultStatusLine() {
@@ -1203,6 +1249,14 @@ Click to quick switch`;
         .get("terminalLocation", "editor"),
     ).trim();
     return raw === "panel" ? "panel" : "editor";
+  }
+
+  getLaunchCwd(account = null) {
+    return (
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ||
+      this.state.projectHome ||
+      account?.homeDir
+    );
   }
 
   resetRefreshTimer() {

@@ -398,13 +398,13 @@ function renderAccounts(accounts) {
   const shell = document.createElement("section");
   shell.className = "slot-browser";
 
-  const switcher = makeAccountSwitcher(rankedAccounts, selectedAccount);
+  const rail = makeAccountRail(rankedAccounts, selectedAccount);
 
   const stage = document.createElement("div");
   stage.className = "account-stage";
   stage.appendChild(makeAccountCard(selectedAccount));
 
-  shell.append(switcher, stage);
+  shell.append(rail, stage);
   accountsGrid.replaceChildren(shell);
 }
 
@@ -562,61 +562,69 @@ function makeAccountCard(account) {
   return node;
 }
 
-function makeAccountSwitcher(accounts, selectedAccount) {
-  const shell = document.createElement("div");
-  shell.className = "account-switcher";
+function makeAccountRail(accounts, selectedAccount) {
+  const shell = document.createElement("aside");
+  shell.className = "account-rail";
 
   const head = document.createElement("div");
   head.className = "switcher-head";
 
   const title = document.createElement("strong");
-  title.textContent = "Detail focus";
+  title.textContent = "Slots";
 
   const hint = document.createElement("span");
   hint.className = "switcher-hint";
-  hint.textContent = `${formatNumber(accounts.filter((account) => account.health?.connected).length)} connected · auto refresh ${formatDuration(AUTO_REFRESH_MS)} · manual refresh for immediate quota updates`;
+  hint.textContent =
+    `${formatNumber(accounts.filter((account) => account.health?.connected).length)} connected · ` +
+    `${formatNumber(accounts.length)} total`;
   head.append(title, hint);
 
-  const controls = document.createElement("div");
-  controls.className = "switcher-controls";
+  const list = document.createElement("div");
+  list.className = "account-list";
+  list.replaceChildren(
+    ...accounts.map((account) => makeAccountListButton(account, accounts, selectedAccount)),
+  );
 
-  const previousButton = document.createElement("button");
-  previousButton.type = "button";
-  previousButton.className = "mini-action";
-  previousButton.textContent = "Prev";
-  previousButton.addEventListener("click", () => stepSelectedAccount(accounts, -1));
-
-  const select = document.createElement("select");
-  select.className = "switcher-select";
-  for (const account of accounts) {
-    const option = document.createElement("option");
-    option.value = account.slug;
-    option.textContent = `${resolveAccountTitle(account, accounts)} · ${account.health?.label || "Unknown"}`;
-    select.appendChild(option);
-  }
-  select.value = selectedAccount.slug;
-  select.addEventListener("change", () => {
-    state.selectedSlug = select.value;
-    renderAccounts(state.data?.accounts || []);
-  });
-
-  const nextButton = document.createElement("button");
-  nextButton.type = "button";
-  nextButton.className = "mini-action";
-  nextButton.textContent = "Next";
-  nextButton.addEventListener("click", () => stepSelectedAccount(accounts, 1));
-
-  controls.append(previousButton, select, nextButton);
-  shell.append(head, controls);
+  shell.append(head, list);
   return shell;
 }
 
-function stepSelectedAccount(accounts, offset) {
-  const index = accounts.findIndex((account) => account.slug === state.selectedSlug);
-  const currentIndex = index >= 0 ? index : 0;
-  const nextIndex = (currentIndex + offset + accounts.length) % accounts.length;
-  state.selectedSlug = accounts[nextIndex].slug;
-  renderAccounts(state.data?.accounts || []);
+function makeAccountListButton(account, accounts, selectedAccount) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "account-list-item";
+  button.dataset.selected = account.slug === selectedAccount.slug ? "true" : "false";
+
+  const top = document.createElement("div");
+  top.className = "account-list-top";
+
+  const title = document.createElement("strong");
+  title.className = "account-list-title";
+  title.textContent = resolveAccountTitle(account, accounts);
+
+  const status = document.createElement("span");
+  status.className = "table-pill";
+  status.dataset.tone = account.health?.tone || "muted";
+  status.textContent = account.health?.label || "Unknown";
+  top.append(title, status);
+
+  const subline = document.createElement("span");
+  subline.className = "account-list-subline";
+  subline.textContent = describeTabSubline(account);
+
+  const meta = document.createElement("span");
+  meta.className = "account-list-meta";
+  meta.textContent =
+    typeof account.remoteUsage?.primaryWindow?.remainingPercent === "number"
+      ? `5h left ${formatQuotaWindow(account.remoteUsage.primaryWindow)}`
+      : account.launch?.summary || account.health?.detail || "No slot summary available.";
+
+  button.append(top, subline, meta);
+  button.addEventListener("click", () => {
+    state.selectedSlug = account.slug;
+    renderAccounts(state.data?.accounts || []);
+  });
+  return button;
 }
 
 function syncSelectedSlug(accounts) {

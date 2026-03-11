@@ -71,27 +71,58 @@ Start the local web dashboard:
 ./bin/multi-codex.js web --open
 ```
 
-The web dashboard now supports:
+## Web dashboard
+
+The web dashboard is the main control surface for this project. It supports:
 
 - creating an empty account slot
 - importing the current `~/.codex` session into a named slot
-- opening ChatGPT, account settings, and Codex usage pages from the dashboard
-- launching either a per-slot `codex login` terminal window or a proxy-backed `codex` terminal window
+- opening ChatGPT, account settings, and Codex usage pages
+- launching either `codex login` or a proxy-backed `codex` session per slot
 - saving per-slot labels for `team`, `subscription`, `owner/auth`, and notes
-- saving project-local proxy/router launch settings for `OPENAI_BASE_URL` or a custom `model_provider`
-- testing the current proxy settings from the dashboard before launching Codex
-- saving an optional local proxy start command and launching it in a terminal from the dashboard
-- removing a slot you no longer need
-- copying login, shell, env, and status commands per account
+- testing a proxy before launch
+- optionally starting a local proxy command in a terminal
+- removing slots you no longer need
+- copying shell, login, status, and launch commands per account
 
-Dashboard proxy routing:
+### Dashboard proxy setup
 
-- Proxy settings are edited in the web dashboard and stored under `accounts/_project/launch.json`.
+Proxy settings live in the dashboard and are stored in:
+
+```text
+accounts/_project/launch.json
+```
+
+That file is ignored by git. It may contain a saved API key, so treat it as local machine state.
+
+Use the proxy panel in the dashboard like this:
+
+1. Start the dashboard with `./bin/multi-codex.js web --open`.
+2. In `Proxy routing`, choose `OPENAI_BASE_URL` or `Custom provider`.
+3. Fill in the base URL.
+4. For `Custom provider`, also fill in `Provider ID` and `Env key`.
+5. If the proxy needs a direct API key, paste it into `API key`.
+6. If you want the dashboard to start the proxy for you, fill in `Local start command` and optionally `Local start cwd`.
+7. Click `Save proxy`.
+8. Click `Test proxy`.
+9. Open a slot and use `Launch Codex`.
+
+Notes:
+
 - `OPENAI_BASE_URL` mode is the lightest option when the built-in OpenAI provider should talk to a router or data-residency endpoint.
-- `Custom provider` mode injects `model_provider` and `model_providers.<id>.*` overrides with `wire_api="responses"`, which matches OpenAI-compatible reverse proxies such as CLIProxyAPI.
-- `Local start command` is optional and lets the dashboard open a terminal and start your proxy process before you launch Codex.
+- `Custom provider` mode injects `model_provider` and `model_providers.<id>.*` overrides with `wire_api="responses"`. This is the mode for OpenAI-compatible reverse proxies such as CLIProxyAPI.
+- If the saved proxy config can authenticate through an API key, the launch button opens `codex` directly and does not require slot-local ChatGPT login state.
 - The dashboard does not expose `temperature`, `top_p`, or `top_k` for Codex launches.
-- If the saved proxy config can authenticate through an API key, the launch button opens `codex` directly and does not require the slot itself to be logged in.
+
+Example values for a local CLIProxyAPI install:
+
+```text
+Mode:         Custom provider
+Base URL:     http://127.0.0.1:8317
+Provider ID:  cliproxyapi
+Env key:      OPENAI_API_KEY
+Start cmd:    /opt/homebrew/bin/brew services start cliproxyapi
+```
 
 ## VS Code extension
 

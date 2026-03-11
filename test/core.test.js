@@ -529,6 +529,36 @@ test("buildDashboardPayload keeps project launch state out of account slots", as
   assert.match(payload.accounts[0].commands.launch, /OPENAI_BASE_URL='http:\/\/127\.0\.0\.1:8317'/);
 });
 
+test("buildDashboardPayload skips non-canonical account directory names", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "multi-codex-invalid-slot-"));
+  await fs.mkdir(path.join(tempRoot, "accounts", "alpha", "home"), { recursive: true });
+  await fs.mkdir(path.join(tempRoot, "accounts", "Project", "home"), { recursive: true });
+
+  const payload = await buildDashboardPayload({
+    projectHome: tempRoot,
+    deep: false,
+    remote: false,
+  });
+
+  assert.equal(payload.summary.accountCount, 1);
+  assert.deepEqual(payload.accounts.map((account) => account.slug), ["alpha"]);
+});
+
+test("buildDashboardPayload skips slot directories that do not contain a home", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "multi-codex-empty-slot-"));
+  await fs.mkdir(path.join(tempRoot, "accounts", "alpha", "home"), { recursive: true });
+  await fs.mkdir(path.join(tempRoot, "accounts", "accounts"), { recursive: true });
+
+  const payload = await buildDashboardPayload({
+    projectHome: tempRoot,
+    deep: false,
+    remote: false,
+  });
+
+  assert.equal(payload.summary.accountCount, 1);
+  assert.deepEqual(payload.accounts.map((account) => account.slug), ["alpha"]);
+});
+
 test("testProxyLaunchSettings falls back to /v1/models and reports model visibility", async () => {
   const calls = [];
   const result = await testProxyLaunchSettings(
