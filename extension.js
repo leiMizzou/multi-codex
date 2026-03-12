@@ -16,9 +16,6 @@ const {
   DEFAULT_PROXY_MODE,
   DEFAULT_PROXY_PROVIDER_ID,
   DEFAULT_PROXY_ENV_KEY,
-  DEFAULT_SERVICE_TIER,
-  FLEX_SERVICE_TIER,
-  normalizeServiceTier,
   resolveProxyLaunchOptions,
 } = require("./lib/launch");
 const {
@@ -63,7 +60,6 @@ class MultiCodexController {
       autoRefreshMs: this.getAutoRefreshMs(),
       viewMode: this.getViewMode(),
       sortOrder: this.getSortOrder(),
-      fastModeEnabled: this.getFastModeEnabled(),
       proxyMode: DEFAULT_PROXY_MODE,
       proxySummary: "Proxy off",
       launchRequiresConnectedSlot: true,
@@ -108,9 +104,6 @@ class MultiCodexController {
       ),
       vscode.commands.registerCommand("multiCodex.toggleSortOrder", () =>
         this.toggleSortOrder(),
-      ),
-      vscode.commands.registerCommand("multiCodex.toggleFastMode", () =>
-        this.toggleFastMode(),
       ),
       vscode.commands.registerCommand("multiCodex.selectProjectHome", () =>
         this.selectProjectHome(),
@@ -374,9 +367,6 @@ class MultiCodexController {
       case "toggleSortOrder":
         await this.toggleSortOrder();
         return;
-      case "toggleFastMode":
-        await this.toggleFastMode();
-        return;
       case "createSlot":
         await this.createSlot();
         return;
@@ -447,7 +437,6 @@ class MultiCodexController {
         autoRefreshMs,
         viewMode: this.getViewMode(),
         sortOrder: this.getSortOrder(),
-        fastModeEnabled: this.getFastModeEnabled(),
         proxyMode: proxy.mode,
         proxySummary: proxy.summary,
         launchRequiresConnectedSlot: proxy.requiresSlotLogin,
@@ -495,7 +484,6 @@ class MultiCodexController {
       autoRefreshMs,
       viewMode: this.getViewMode(),
       sortOrder,
-      fastModeEnabled: this.getFastModeEnabled(),
       proxyMode: proxy.mode,
       proxySummary: proxy.summary,
       launchRequiresConnectedSlot: proxy.requiresSlotLogin,
@@ -766,18 +754,6 @@ class MultiCodexController {
       .update(SORT_ORDER_CONFIG_KEY, next, vscode.ConfigurationTarget.Global);
   }
 
-  async toggleFastMode() {
-    const next = this.getFastModeEnabled() ? FLEX_SERVICE_TIER : DEFAULT_SERVICE_TIER;
-    this.state = {
-      ...this.state,
-      fastModeEnabled: next === DEFAULT_SERVICE_TIER,
-    };
-    await this.pushState();
-    await vscode.workspace
-      .getConfiguration(CONFIG_PREFIX)
-      .update("defaultServiceTier", next, vscode.ConfigurationTarget.Global);
-  }
-
   async pickViewMode() {
     const current = this.getViewMode();
     const picked = await vscode.window.showQuickPick(
@@ -867,7 +843,6 @@ class MultiCodexController {
   buildPrimaryLaunchCommand(proxy) {
     return buildSlotLaunchCommand(this.buildCodexLaunchPrefix(proxy), {
       action: "open",
-      cwd: this.getLaunchCwd(),
     });
   }
 
@@ -886,11 +861,6 @@ class MultiCodexController {
     const reasoningEffort = this.getDefaultReasoningEffort();
     if (reasoningEffort) {
       parts.push("-c", shellQuote(`model_reasoning_effort="${reasoningEffort}"`));
-    }
-
-    const serviceTier = this.getDefaultServiceTier();
-    if (serviceTier) {
-      parts.push("-c", shellQuote(`service_tier="${serviceTier}"`));
     }
 
     const statusLine = this.getDefaultStatusLine();
@@ -1171,19 +1141,6 @@ Click to quick switch`;
         .get("defaultReasoningEffort", "xhigh"),
     ).trim();
     return raw || "xhigh";
-  }
-
-  getDefaultServiceTier() {
-    const raw = String(
-      vscode.workspace
-        .getConfiguration(CONFIG_PREFIX)
-        .get("defaultServiceTier", DEFAULT_SERVICE_TIER),
-    ).trim();
-    return normalizeServiceTier(raw);
-  }
-
-  getFastModeEnabled() {
-    return this.getDefaultServiceTier() === DEFAULT_SERVICE_TIER;
   }
 
   getDefaultStatusLine() {

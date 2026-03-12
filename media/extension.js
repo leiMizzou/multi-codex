@@ -8,7 +8,6 @@ const state = vscode.getState() || {
   autoRefreshMs: 0,
   viewMode: "standard",
   sortOrder: "asc",
-  fastModeEnabled: true,
   proxyMode: "off",
   proxySummary: "Proxy off",
   launchRequiresConnectedSlot: true,
@@ -118,7 +117,6 @@ function renderToolbar() {
     const actions = document.createElement("div");
     actions.className = "toolbar-actions";
     actions.appendChild(makeButton(getSortButtonLabel(), "toggleSortOrder", null, "secondary"));
-    actions.appendChild(makeButton(getFastButtonLabel(), "toggleFastMode", null, getFastButtonTone()));
     section.appendChild(actions);
     section.appendChild(renderModePicker());
     return section;
@@ -139,7 +137,6 @@ function renderToolbar() {
   actions.className = "toolbar-actions toolbar-action-grid";
   actions.appendChild(makeButton("Refresh", "refresh", null, "secondary"));
   actions.appendChild(makeButton(getSortButtonLabel(), "toggleSortOrder", null, "secondary"));
-  actions.appendChild(makeButton(getFastButtonLabel(), "toggleFastMode", null, getFastButtonTone()));
   actions.appendChild(makeButton("New", "createSlot", null, "action"));
   actions.appendChild(makeButton("Import", "importCurrent", null, "secondary"));
   actions.appendChild(makeButton("Home", "selectProjectHome", null, "ghost"));
@@ -317,14 +314,6 @@ function formatSessionCount(value) {
 
 function getSortButtonLabel() {
   return state.sortOrder === "desc" ? "Sort 5h ↓" : "Sort 5h ↑";
-}
-
-function getFastButtonLabel() {
-  return state.fastModeEnabled ? "Fast On" : "Fast Off";
-}
-
-function getFastButtonTone() {
-  return state.fastModeEnabled ? "action" : "ghost";
 }
 
 function renderKv(label, valueHtml) {

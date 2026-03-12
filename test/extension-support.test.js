@@ -21,7 +21,7 @@ test("buildSlotLaunchCommand keeps Use + Open as a fresh session", () => {
       action: "open",
       cwd: "/tmp/project",
     }),
-    "codex -m gpt-5.4 -C '/tmp/project'",
+    "codex -m gpt-5.4",
   );
 });
 

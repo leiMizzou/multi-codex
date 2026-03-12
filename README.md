@@ -140,7 +140,7 @@ What the extension does:
 - can resume the active slot directly with `codex resume --all` from the sidebar or command palette
 - when you switch the active slot, VS Code terminal environment defaults are updated so newly opened terminals inherit that slot's `CODEX_HOME`
 - can route interactive Codex launches through an external proxy via `OPENAI_BASE_URL` or a custom `model_provider` that uses the Responses API
-- interactive launches default to `--dangerously-bypass-approvals-and-sandbox`, `-m gpt-5.4`, `-c 'model_reasoning_effort="xhigh"'`, `-c 'service_tier="fast"'`, and `-c 'tui.status_line=["model-with-reasoning","current-dir","five-hour-limit","weekly-limit","used-tokens"]'` unless you override the extension settings
+- interactive launches default to `--dangerously-bypass-approvals-and-sandbox`, `-m gpt-5.4`, `-c 'model_reasoning_effort="xhigh"'`, and `-c 'tui.status_line=["model-with-reasoning","current-dir","five-hour-limit","weekly-limit","used-tokens"]'`
 - the toolbar can toggle `5h left` sorting between ascending and descending, and the chosen order is stored globally
 - opens those terminals in the editor area by default, as top tabs beside the active editor
 - supports three sidebar display modes: `Minimal`, `Standard`, and `Detailed`

@@ -7,18 +7,8 @@ const {
   DEFAULT_PROXY_ENV_KEY,
   DEFAULT_PROXY_MODE,
   DEFAULT_PROXY_PROVIDER_ID,
-  DEFAULT_SERVICE_TIER,
-  FLEX_SERVICE_TIER,
-  normalizeServiceTier,
   resolveProxyLaunchOptions,
 } = require("../lib/launch");
-
-test("normalizeServiceTier defaults to fast and allows flex", () => {
-  assert.equal(normalizeServiceTier(), DEFAULT_SERVICE_TIER);
-  assert.equal(normalizeServiceTier("fast"), DEFAULT_SERVICE_TIER);
-  assert.equal(normalizeServiceTier(FLEX_SERVICE_TIER), FLEX_SERVICE_TIER);
-  assert.equal(normalizeServiceTier("off"), DEFAULT_SERVICE_TIER);
-});
 
 test("resolveProxyLaunchOptions keeps proxy disabled by default", () => {
   const proxy = resolveProxyLaunchOptions();
