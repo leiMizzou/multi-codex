@@ -61,15 +61,19 @@ Token metrics are parsed from each slot's `sessions/*.jsonl` files. The last `to
 | `reasoning_output_tokens` | Output tokens used for reasoning |
 | `total_tokens` | Grand total |
 
-Cost is estimated using these rates (per 1M tokens):
+Cost is estimated per model (default: `gpt-5.4`). Rates per 1M tokens:
 
-| Type | Rate |
-|------|------|
-| Input | $2.50 |
-| Cached input | $1.25 |
-| Output | $10.00 |
+| Model | Input | Cached | Output |
+|-------|-------|--------|--------|
+| gpt-5.4 | $2.50 | $0.25 | $15.00 |
+| gpt-5.3-codex | $1.75 | $0.175 | $14.00 |
+| gpt-5.1-codex | $1.25 | $0.125 | $10.00 |
+| gpt-5-codex | $1.25 | $0.125 | $10.00 |
+| codex-mini-latest | $1.50 | $0.375 | $6.00 |
+| o3 | $2.00 | $0.50 | $8.00 |
+| o4-mini | $1.10 | $0.275 | $4.40 |
 
-Token scanning always runs, regardless of the `fastScan` setting.
+Prices sourced from [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing). Token scanning always runs, regardless of the `fastScan` setting.
 
 ## Account store layout
 
