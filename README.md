@@ -1,195 +1,160 @@
 # multi-codex
 
-`multi-codex` is a local wrapper around Codex that keeps one `CODEX_HOME` per account. It does not modify your current `~/.codex` unless you explicitly import from it.
+Local multi-account Codex manager. One `CODEX_HOME` per account, with a VS Code sidebar and web dashboard to manage them all.
 
-## What it solves
+## Features
 
-- Keep multiple Codex/ChatGPT logins cached locally at the same time
-- Switch accounts without overwriting the current `auth.json`
-- Inspect each account's local auth state, plan metadata, refresh times, and local session usage
-- View all connected accounts at once in a local web dashboard
-
-## Limits
-
-- Codex currently stores one active login per `CODEX_HOME`
-- Codex does not expose remote remaining quota/plan usage locally
-- The dashboard's `localTokens` field is computed from local session logs under each account home, not from OpenAI billing APIs
-
-## Layout
-
-By default this project stores accounts here:
-
-```text
-accounts/<slug>/
-  meta.json
-  home/
-    auth.json
-    config.toml
-    history.jsonl
-    sessions/
-accounts/_project/
-  launch.json
-```
-
-Each `home/` directory is used as that account's `CODEX_HOME`.
-`accounts/_project/` is reserved for local dashboard launch settings and is ignored by git.
+- **Multi-account isolation** — keep multiple Codex/ChatGPT logins cached locally without overwriting each other
+- **Quota monitoring** — 5-hour window, weekly window, subscription expiry, and reset times per slot
+- **Token usage tracking** — input, output, cached input, and reasoning tokens parsed from local session logs
+- **Cost estimation** — estimated USD spend based on token breakdown, plus cache savings
+- **Proxy routing** — launch Codex through `OPENAI_BASE_URL` or a custom `model_provider` (e.g. CLIProxyAPI)
+- **VS Code extension** — sidebar with slot switching, one-click launch/resume, quota sorting, and three view modes
+- **Web dashboard** — full control surface with proxy config, slot labels, and launch commands
 
 ## Quick start
 
 ```bash
 cd multi-codex
 chmod +x ./bin/multi-codex.js
+
+# Create a slot and log in
 ./bin/multi-codex.js add team-a
 ./bin/multi-codex.js login team-a
-./bin/multi-codex.js dashboard
-```
 
-If you already have a working login in `~/.codex`, import it into a named account:
-
-```bash
+# Or import an existing ~/.codex session
 ./bin/multi-codex.js import-current personal
+
+# Open the web dashboard
 ./bin/multi-codex.js web --open
 ```
 
-## Common commands
+## CLI commands
 
-Show the dashboard:
+| Command | Description |
+|---------|-------------|
+| `add <name>` | Create a new account slot |
+| `remove <name>` | Delete a slot (aliases: `rm`, `delete`) |
+| `import-current <name>` | Import current `~/.codex` auth into a slot |
+| `login <name>` | Interactive login for a slot |
+| `logout <name>` | Interactive logout for a slot |
+| `dashboard` | Show all accounts with status (aliases: `list`, `status`) |
+| `dashboard --fast` | Skip session log parsing for faster output |
+| `dashboard --json` | Output raw JSON |
+| `web` | Start web dashboard server (alias: `serve`) |
+| `web --open` | Start and open in browser |
+| `env <name>` | Print shell exports for a slot (alias: `use`) |
+| `exec <name> -- <cmd>` | Run a command with that slot's `CODEX_HOME` |
+| `shell <name>` | Spawn a subshell with the slot activated |
+| `where <name>` | Show slot paths |
+| `help` | Show help |
 
-```bash
-./bin/multi-codex.js dashboard
-```
+## Token usage & cost estimation
 
-Fast mode skips session log token parsing:
+Token metrics are parsed from each slot's `sessions/*.jsonl` files. The last `token_count` event in each session provides cumulative totals:
 
-```bash
-./bin/multi-codex.js dashboard --fast
-```
+| Metric | Description |
+|--------|-------------|
+| `input_tokens` | Total input tokens sent |
+| `cached_input_tokens` | Input tokens served from cache (billed at 50% rate) |
+| `output_tokens` | Total output tokens received |
+| `reasoning_output_tokens` | Output tokens used for reasoning |
+| `total_tokens` | Grand total |
 
-Start the local web dashboard:
+Cost is estimated using these rates (per 1M tokens):
 
-```bash
-./bin/multi-codex.js web --open
-```
+| Type | Rate |
+|------|------|
+| Input | $2.50 |
+| Cached input | $1.25 |
+| Output | $10.00 |
 
-## Web dashboard
+Token scanning always runs, regardless of the `fastScan` setting.
 
-The web dashboard is the main control surface for this project. It supports:
-
-- creating an empty account slot
-- importing the current `~/.codex` session into a named slot
-- opening ChatGPT, account settings, and Codex usage pages
-- launching either `codex login` or a proxy-backed `codex` session per slot
-- saving per-slot labels for `team`, `subscription`, `owner/auth`, and notes
-- testing a proxy before launch
-- optionally starting a local proxy command in a terminal
-- removing slots you no longer need
-- copying shell, login, status, and launch commands per account
-
-### Dashboard proxy setup
-
-Proxy settings live in the dashboard and are stored in:
-
-```text
-accounts/_project/launch.json
-```
-
-That file is ignored by git. It may contain a saved API key, so treat it as local machine state.
-
-Use the proxy panel in the dashboard like this:
-
-1. Start the dashboard with `./bin/multi-codex.js web --open`.
-2. In `Proxy routing`, choose `OPENAI_BASE_URL` or `Custom provider`.
-3. Fill in the base URL.
-4. For `Custom provider`, also fill in `Provider ID` and `Env key`.
-5. If the proxy needs a direct API key, paste it into `API key`.
-6. If you want the dashboard to start the proxy for you, fill in `Local start command` and optionally `Local start cwd`.
-7. Click `Save proxy`.
-8. Click `Test proxy`.
-9. Open a slot and use `Launch Codex`.
-
-Notes:
-
-- `OPENAI_BASE_URL` mode is the lightest option when the built-in OpenAI provider should talk to a router or data-residency endpoint.
-- `Custom provider` mode injects `model_provider` and `model_providers.<id>.*` overrides with `wire_api="responses"`. This is the mode for OpenAI-compatible reverse proxies such as CLIProxyAPI.
-- If the saved proxy config can authenticate through an API key, the launch button opens `codex` directly and does not require slot-local ChatGPT login state.
-- The dashboard does not expose `temperature`, `top_p`, or `top_k` for Codex launches.
-
-Example values for a local CLIProxyAPI install:
+## Account store layout
 
 ```text
-Mode:         Custom provider
-Base URL:     http://127.0.0.1:8317
-Provider ID:  cliproxyapi
-Env key:      OPENAI_API_KEY
-Start cmd:    /opt/homebrew/bin/brew services start cliproxyapi
+accounts/
+  <slug>/
+    meta.json              # Labels, team, subscription info
+    home/
+      auth.json            # OAuth tokens
+      config.toml          # Codex config
+      history.jsonl        # Command history
+      sessions/            # Session logs with token_count events
+  _project/
+    launch.json            # Proxy settings (gitignored, may contain API key)
 ```
+
+Each `home/` directory is used as that slot's `CODEX_HOME`.
 
 ## VS Code extension
 
-This project now also includes a local VS Code extension manifest.
-
-What the extension does:
-
-- shows every saved slot in a VS Code sidebar webview
-- displays online state, 5-hour quota, weekly quota, and subscription expiry
-- shows quota reset times for both the 5-hour and weekly windows
-- can run in its own extension-managed storage, without the web server and without a separate multi-codex project directory
-- lets you pick an active slot without typing login commands again
-- `Use + Open` always launches a fresh `codex` session for that slot
-- launches `codex` or `codex login` in a VS Code integrated terminal with that slot's `CODEX_HOME`
-- can resume the active slot directly with `codex resume --all` from the sidebar or command palette
-- when you switch the active slot, VS Code terminal environment defaults are updated so newly opened terminals inherit that slot's `CODEX_HOME`
-- can route interactive Codex launches through an external proxy via `OPENAI_BASE_URL` or a custom `model_provider` that uses the Responses API
-- interactive launches default to `--dangerously-bypass-approvals-and-sandbox`, `-m gpt-5.4`, `-c 'model_reasoning_effort="xhigh"'`, and `-c 'tui.status_line=["model-with-reasoning","current-dir","five-hour-limit","weekly-limit","used-tokens"]'`
-- the toolbar can toggle `5h left` sorting between ascending and descending, and the chosen order is stored globally
-- opens those terminals in the editor area by default, as top tabs beside the active editor
-- supports three sidebar display modes: `Minimal`, `Standard`, and `Detailed`
-- supports one-click `Use + Open` / `Use + Login` per slot, plus `Quick Launch Slot` from the command palette
-- refreshes automatically every 6 hours by default, with manual refresh for immediate quota updates
-- lets you create slots, import the current `~/.codex` login, and delete slots directly inside the extension
-
-Important boundary:
-
-- the extension can switch the slot used for the terminals it launches
-- it does not hot-swap an already-running Codex process or privately control the official OpenAI extension internals
-
-Package the extension locally:
+### Install
 
 ```bash
-cd multi-codex
 npm run package:extension
+code --install-extension multi-codex-0.1.1.vsix --force
 ```
 
-Install the generated `.vsix`:
+### What it does
 
-```bash
-code --install-extension local-tools.multi-codex-0.1.0.vsix --force
+- Shows every slot in a sidebar webview with online state, quota, and token usage
+- Three view modes: **Minimal** (compact meters), **Standard** (quota + tokens + cost), **Detailed** (full breakdown)
+- **Open** launches a fresh `codex` session; **Resume** continues the latest session with `codex resume --all`
+- Switch active slot from the sidebar or command palette — new terminals inherit that slot's `CODEX_HOME`
+- Sort slots by 5-hour remaining quota (ascending or descending)
+- Create, import, login, and delete slots directly from the sidebar
+- Auto-refreshes every 6 hours; manual refresh for immediate updates
+- Token usage summary at the top: total tokens, input/output/cached breakdown, estimated cost, and cache savings
+
+### Extension commands
+
+| Command | Description |
+|---------|-------------|
+| Quick Switch Slot | Pick active slot from palette |
+| Quick Launch Slot | Launch codex for a slot from palette |
+| Resume Active Slot | Resume latest session for active slot |
+| Open Panel | Open sidebar as an editor panel |
+| Create Slot | Create a new slot |
+| Import Current Login | Import `~/.codex` into a slot |
+| Remove Slot | Delete a slot |
+| Select Project Home | Point to an existing account store |
+| Use Extension Storage | Use extension-managed local storage |
+| Set/Clear Proxy API Key | Manage proxy key in VS Code Secret Storage |
+
+### Extension settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `projectHome` | `""` | Absolute path to account store; auto-detects or falls back to extension storage |
+| `fastScan` | `true` | Skip deep history line counting (token scanning always runs) |
+| `autoRefreshHours` | `6` | Sidebar auto-refresh interval in hours |
+| `viewMode` | `standard` | Sidebar detail level: `minimal`, `standard`, `detailed` |
+| `primarySortOrder` | `asc` | 5h quota sort direction: `asc` or `desc` |
+| `activeSlot` | `""` | Globally preferred active slot |
+| `codexCommand` | `codex` | Command to launch Codex |
+| `proxyMode` | `off` | Proxy mode: `off`, `openaiBaseUrl`, `customProvider` |
+| `proxyBaseUrl` | `""` | Base URL for proxy/router |
+| `proxyProviderId` | `proxy` | Provider ID for `customProvider` mode |
+| `proxyEnvKey` | `OPENAI_API_KEY` | Env var name for proxy API key |
+| `defaultModel` | `gpt-5.4` | Model for interactive launches |
+| `defaultReasoningEffort` | `xhigh` | Reasoning effort level |
+| `bypassApprovalsAndSandbox` | `true` | Include `--dangerously-bypass-approvals-and-sandbox` |
+| `terminalLocation` | `editor` | Where to open terminals: `editor` or `panel` |
+
+### Proxy setup
+
+**OPENAI_BASE_URL mode** — lightest option for routing through a proxy or data-residency endpoint:
+
+```json
+{
+  "multiCodex.proxyMode": "openaiBaseUrl",
+  "multiCodex.proxyBaseUrl": "http://127.0.0.1:8317"
+}
 ```
 
-The extension will auto-detect an existing account store first and otherwise fall back to its own local storage.
-
-To force the extension into its own local storage, run:
-
-```text
-Multi Codex: Use Extension Storage
-```
-
-If you want to point it at an existing account store instead, run:
-
-```text
-Multi Codex: Select Project Home
-```
-
-Then point it at the folder that contains `accounts/`, at an existing multi-codex project root, or at an empty directory that should become a new store.
-
-External proxy / router support:
-
-- `multiCodex.proxyMode = "openaiBaseUrl"` sets `OPENAI_BASE_URL` for extension-launched Codex terminals. This is the lightest option when the built-in OpenAI provider should talk to a router or data-residency endpoint.
-- `multiCodex.proxyMode = "customProvider"` injects `-c model_provider=...` and `-c model_providers.<id>.*` overrides with `wire_api="responses"`. This is the mode to use for OpenAI-compatible reverse proxies such as CLIProxyAPI.
-- `Multi Codex: Set Proxy API Key` stores an optional proxy key in VS Code Secret Storage. If no key is stored, Codex must find the relevant API key env var from the surrounding environment.
-- In `customProvider` mode, `Use + Open` does not require the slot itself to be logged in, because the launch can authenticate through the configured proxy API key instead.
-
-Example settings for CLIProxyAPI:
+**Custom provider mode** — for OpenAI-compatible reverse proxies (e.g. CLIProxyAPI):
 
 ```json
 {
@@ -200,59 +165,38 @@ Example settings for CLIProxyAPI:
 }
 ```
 
-Recommended capture flow for multiple teams/subscriptions:
+In `customProvider` mode, slots don't need their own ChatGPT login — the proxy API key handles auth.
 
-1. Create a slot named after the team or subscription you want to preserve.
-2. Open ChatGPT or Settings from the dashboard and manually switch to that target team/subscription.
-3. On that slot card, click the launch button. In normal mode it opens `codex login`; with proxy routing it opens `codex` using the saved router settings.
-4. Save `team`, `subscription`, `owner/auth`, and notes on the slot card.
-5. Refresh the dashboard. That slot remains isolated and will aggregate alongside your other saved slots.
+## Web dashboard
 
-Use a cheaper status scan for the web API:
+Start with `./bin/multi-codex.js web --open`. The dashboard supports:
 
-```bash
-./bin/multi-codex.js web --fast
-```
+- Creating, importing, and removing slots
+- Saving per-slot labels (team, subscription, owner, notes)
+- Token usage breakdown and cost estimation per slot and globally
+- Launching `codex` or `codex login` per slot
+- Proxy configuration with test and optional local start command
+- Opening ChatGPT, account settings, and usage pages
 
-Output shell exports for the current account:
+### Dashboard proxy
 
-```bash
-eval "$(./bin/multi-codex.js env personal)"
-echo "$CODEX_HOME"
-```
+Proxy settings are stored in `accounts/_project/launch.json` (gitignored).
 
-Run Codex under a specific account without switching your shell:
+1. Choose proxy mode: `OPENAI_BASE_URL` or `Custom provider`
+2. Fill in base URL (and provider ID / env key for custom mode)
+3. Optionally paste an API key and set a local start command
+4. Save → Test → Launch
 
-```bash
-./bin/multi-codex.js exec personal -- codex login status
-./bin/multi-codex.js exec personal -- codex
-```
+## Limits
 
-Remove an account directory you no longer need:
-
-```bash
-./bin/multi-codex.js remove personal
-```
-
-Open a subshell with the account activated:
-
-```bash
-./bin/multi-codex.js shell personal
-```
-
-## Installing as a command
-
-From this project directory:
-
-```bash
-npm link
-multi-codex dashboard
-```
+- Codex stores one active login per `CODEX_HOME`
+- The extension cannot hot-swap an already-running Codex process
+- Token costs are estimates based on published pricing, not actual billing data
+- `temperature`, `top_p`, and `top_k` are not exposed for Codex launches
 
 ## Development
 
-Run tests:
-
 ```bash
 npm test
+npm run package:extension
 ```
