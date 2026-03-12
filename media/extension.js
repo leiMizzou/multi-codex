@@ -122,35 +122,36 @@ function renderToolbar() {
     return section;
   }
 
-  const top = document.createElement("div");
-  top.className = "toolbar-top";
-
-  const copy = document.createElement("div");
-  copy.className = "toolbar-copy";
-  copy.innerHTML = `
-    <p class="eyebrow">multi-codex vscode</p>
+  const header = document.createElement("div");
+  header.className = "toolbar-header";
+  header.innerHTML = `
     <h2>${escapeHtml(getActiveTitle())}</h2>
-    <div class="toolbar-meta">${escapeHtml(state.projectHome || "No project home selected")}<br>${escapeHtml(state.proxySummary || "Proxy off")}<br>Open starts a fresh Codex session. Resume continues the latest slot session when local history exists. Auto refresh ${escapeHtml(formatDuration(state.autoRefreshMs))} · manual refresh for immediate quota updates</div>
+    <div class="toolbar-meta">${escapeHtml(state.proxySummary || "Proxy off")} · refresh ${escapeHtml(formatDuration(state.autoRefreshMs))}</div>
   `;
+  section.appendChild(header);
 
-  const actions = document.createElement("div");
-  actions.className = "toolbar-actions toolbar-action-grid";
-  actions.appendChild(makeButton("Refresh", "refresh", null, "secondary"));
-  actions.appendChild(makeButton(getSortButtonLabel(), "toggleSortOrder", null, "secondary"));
-  actions.appendChild(makeButton("New", "createSlot", null, "action"));
-  actions.appendChild(makeButton("Import", "importCurrent", null, "secondary"));
-  actions.appendChild(makeButton("Home", "selectProjectHome", null, "ghost"));
-  actions.appendChild(
+  const primary = document.createElement("div");
+  primary.className = "toolbar-actions";
+  primary.appendChild(
     makeButton("Open", "launchActiveCodex", state.activeSlug, "action", disableOpen),
   );
-  actions.appendChild(
+  primary.appendChild(
     makeButton("Resume", "resumeActiveSlot", state.activeSlug, "secondary", disableResume),
   );
-  actions.appendChild(
+  primary.appendChild(makeButton("Refresh", "refresh", null, "secondary"));
+  primary.appendChild(makeButton(getSortButtonLabel(), "toggleSortOrder", null, "ghost"));
+  section.appendChild(primary);
+
+  const manage = document.createElement("div");
+  manage.className = "toolbar-actions";
+  manage.appendChild(makeButton("New", "createSlot", null, "secondary"));
+  manage.appendChild(makeButton("Import", "importCurrent", null, "secondary"));
+  manage.appendChild(
     makeButton("Login", "loginActiveSlot", state.activeSlug, "ghost", disableLogin),
   );
-  top.append(copy, actions);
-  section.appendChild(top);
+  manage.appendChild(makeButton("Home", "selectProjectHome", null, "ghost"));
+  section.appendChild(manage);
+
   section.appendChild(renderModePicker());
   return section;
 }
@@ -188,19 +189,22 @@ function renderSummary() {
   section.className = "summary";
 
   const summary = state.summary || {};
+  const bd = summary.tokenBreakdown || {};
+  const cost = summary.tokenCost;
   section.innerHTML = `
-    <h3>Slot summary</h3>
-    <div class="summary-meta">Active slot: ${escapeHtml(getActiveTitle())}</div>
+    <h3>Token usage · ${escapeHtml(formatNumber(summary.activeCount))} active / ${escapeHtml(formatNumber(summary.accountCount))} slots</h3>
   `;
 
   const grid = document.createElement("div");
   grid.className = "summary-grid";
   const items = [
-    ["5h sort", state.sortOrder === "desc" ? "High to low" : "Low to high"],
-    ["Connected", formatNumber(summary.connectedCount)],
-    ["Active", formatNumber(summary.activeCount)],
-    ["Refreshable", formatNumber(summary.refreshableCount)],
-    ["Latest update", formatRelative(summary.latestUpdateAt)],
+    ["Total tokens", formatNumber(summary.localTotalTokens)],
+    ["Input", formatNumber(bd.input_tokens)],
+    ["Output", formatNumber(bd.output_tokens)],
+    ["Cached input", formatNumber(bd.cached_input_tokens)],
+    ["Reasoning", formatNumber(bd.reasoning_output_tokens)],
+    ["Est. cost", cost ? `$${cost.totalCost.toFixed(2)}` : "—"],
+    ["Saved by cache", cost ? `$${cost.savedByCaching.toFixed(2)}` : "—"],
   ];
   for (const [label, value] of items) {
     const metric = document.createElement("div");
@@ -212,6 +216,7 @@ function renderSummary() {
     grid.appendChild(metric);
   }
   section.appendChild(grid);
+
   return section;
 }
 
@@ -253,6 +258,8 @@ function renderCardContent(account, mode) {
   }
 
   if (mode === "detailed") {
+    const dbd = account.tokenBreakdown || {};
+    const dcost = account.tokenCost;
     return `
       <div class="card-grid">
         ${renderKv("5h left", renderMeter(account.primaryRemainingPercent, account.primaryLabel))}
@@ -266,17 +273,33 @@ function renderCardContent(account, mode) {
         ${renderKv("Workspace", escapeHtml(account.workspace || "—"))}
         ${renderKv("Plan", escapeHtml(account.plan || "—"))}
       </div>
+      <div class="card-grid token-stats">
+        ${renderKv("Total tokens", escapeHtml(formatNumber(account.localTotalTokens)))}
+        ${renderKv("Input", escapeHtml(formatNumber(dbd.input_tokens)))}
+        ${renderKv("Output", escapeHtml(formatNumber(dbd.output_tokens)))}
+        ${renderKv("Cached", escapeHtml(formatNumber(dbd.cached_input_tokens)))}
+        ${renderKv("Reasoning", escapeHtml(formatNumber(dbd.reasoning_output_tokens)))}
+        ${renderKv("Est. cost", escapeHtml(dcost ? '$' + dcost.totalCost.toFixed(2) : '—'))}
+      </div>
       <div class="card-detail">${escapeHtml(account.detail || "")}</div>
       <div class="card-path">${escapeHtml(account.homeDir)}</div>
     `;
   }
 
+  const sbd = account.tokenBreakdown || {};
+  const scost = account.tokenCost;
   return `
     <div class="card-grid">
       ${renderKv("5h left", renderMeter(account.primaryRemainingPercent, account.primaryLabel))}
       ${renderKv("5h reset", escapeHtml(formatDateTime(account.primaryResetAt)))}
       ${renderKv("Week left", renderMeter(account.secondaryRemainingPercent, account.secondaryLabel))}
       ${renderKv("Week reset", escapeHtml(formatDateTime(account.secondaryResetAt)))}
+    </div>
+    <div class="card-grid token-stats">
+      ${renderKv("Tokens", escapeHtml(formatNumber(account.localTotalTokens)))}
+      ${renderKv("In/Out", escapeHtml(formatNumber(sbd.input_tokens) + ' / ' + formatNumber(sbd.output_tokens)))}
+      ${renderKv("Cached", escapeHtml(formatNumber(sbd.cached_input_tokens)))}
+      ${renderKv("Cost", escapeHtml(scost ? '$' + scost.totalCost.toFixed(2) : '—'))}
     </div>
   `;
 }

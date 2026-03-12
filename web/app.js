@@ -347,6 +347,8 @@ async function openSurface(surface) {
 function renderSummary(payload) {
   const attentionCount =
     (payload.summary.refreshableCount || 0) + (payload.summary.staleCount || 0);
+  const bd = payload.summary.tokenBreakdown || {};
+  const cost = payload.summary.tokenCost;
   const cards = [
     {
       label: "Online",
@@ -359,9 +361,18 @@ function renderSummary(payload) {
       meta: "Refreshable, stale, or ended subscriptions",
     },
     {
-      label: "Local tokens",
+      label: "Total tokens",
       value: formatNumber(payload.summary.localTotalTokens),
-      meta: state.fast ? "Fast scan enabled" : "Summed from session logs",
+      meta: state.fast
+        ? "Fast scan enabled"
+        : `In ${formatNumber(bd.input_tokens)} · Out ${formatNumber(bd.output_tokens)} · Cache ${formatNumber(bd.cached_input_tokens)}`,
+    },
+    {
+      label: "Est. cost",
+      value: cost ? `$${cost.totalCost.toFixed(2)}` : "—",
+      meta: cost
+        ? `In $${cost.inputCost.toFixed(2)} · Cache $${cost.cachedCost.toFixed(2)} · Out $${cost.outputCost.toFixed(2)} · Saved $${cost.savedByCaching.toFixed(2)}`
+        : "No token data",
     },
     {
       label: "Last update",
@@ -423,11 +434,17 @@ function makeAccountCard(account) {
   node.querySelector(".account-detail").textContent = describeAccountDetail(account);
 
   const metricRibbon = node.querySelector(".metric-ribbon");
+  const abd = account.usage.tokenBreakdown || {};
+  const acost = account.usage.tokenCost;
   metricRibbon.replaceChildren(
     makeMetricChip(remoteUsage.planType || account.auth.planType || "—", "Plan"),
     makeMetricChip(formatQuotaWindow(remoteUsage.primaryWindow), "5h left"),
     makeMetricChip(formatQuotaWindow(remoteUsage.secondaryWindow), "Week left"),
-    makeMetricChip(formatNumber(account.usage.localTotalTokens), "Local tokens"),
+    makeMetricChip(formatNumber(account.usage.localTotalTokens), "Total tokens"),
+    makeMetricChip(formatNumber(abd.input_tokens), "Input"),
+    makeMetricChip(formatNumber(abd.output_tokens), "Output"),
+    makeMetricChip(formatNumber(abd.cached_input_tokens), "Cached"),
+    makeMetricChip(acost ? `$${acost.totalCost.toFixed(2)}` : "—", "Est. cost"),
   );
 
   const identityRibbon = node.querySelector(".identity-ribbon");

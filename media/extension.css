@@ -86,15 +86,9 @@ input {
   border-color: var(--vscode-button-background);
 }
 
-.toolbar-top {
+.toolbar-header {
   display: grid;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.toolbar-copy {
-  display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .eyebrow {
@@ -282,6 +276,22 @@ input {
 
 .card-grid.minimal-grid {
   grid-template-columns: 1fr;
+}
+
+.token-stats {
+  margin-top: 4px;
+  border-top: 1px solid var(--vscode-panel-border);
+  padding-top: 8px;
+}
+
+.summary-grid.token-stats {
+  margin-top: 10px;
+}
+
+.token-stats .metric-value,
+.token-stats .kv-value {
+  font-size: 13px;
+  color: var(--vscode-charts-green, #89d185);
 }
 
 .minimal-inline {

@@ -1277,6 +1277,9 @@ function normalizeAccount(account, accounts, proxy) {
     subscriptionActiveUntil: account.auth?.subscriptionActiveUntil || null,
     quotaFetchedAt:
       account.remoteUsage?.fetchedAt || account.auth?.lastRefresh || null,
+    localTotalTokens: account.usage?.localTotalTokens || 0,
+    tokenBreakdown: account.usage?.tokenBreakdown || null,
+    tokenCost: account.usage?.tokenCost || null,
   };
 
   return {
