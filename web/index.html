@@ -26,6 +26,15 @@
             <span class="panel-title">Snapshot</span>
             <div class="panel-actions">
               <button id="refresh-button" class="button ghost" type="button">Refresh now</button>
+              <label class="panel-select">
+                <span>Token window</span>
+                <select id="token-window-select">
+                  <option value="all">All time</option>
+                  <option value="1d">Last 24h</option>
+                  <option value="7d">Last 7d</option>
+                  <option value="30d">Last 30d</option>
+                </select>
+              </label>
               <label class="toggle">
                 <input id="fast-toggle" type="checkbox" />
                 <span>Fast scan</span>

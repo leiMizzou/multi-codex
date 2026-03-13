@@ -169,6 +169,98 @@ test("collectUsageStats sums final token counts from session logs", async () => 
   assert.equal(usage.localTotalTokens, 300);
 });
 
+test("collectUsageStats builds 1d, 7d, and 30d token windows", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "multi-codex-window-"));
+  const homeDir = path.join(tempRoot, "home");
+  const sessionsDir = path.join(homeDir, "sessions", "2026", "03", "12");
+  await fs.mkdir(sessionsDir, { recursive: true });
+
+  const timedSessionPath = path.join(sessionsDir, "timed.jsonl");
+  await fs.writeFile(
+    timedSessionPath,
+    [
+      JSON.stringify({
+        timestamp: "2026-03-05T08:00:00.000Z",
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            total_token_usage: {
+              total_tokens: 100,
+              input_tokens: 70,
+              output_tokens: 30,
+              cached_input_tokens: 10,
+              reasoning_output_tokens: 5,
+            },
+          },
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-03-12T12:00:00.000Z",
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            total_token_usage: {
+              total_tokens: 240,
+              input_tokens: 160,
+              output_tokens: 80,
+              cached_input_tokens: 30,
+              reasoning_output_tokens: 20,
+            },
+          },
+        },
+      }),
+    ].join("\n"),
+    "utf8",
+  );
+  await fs.utimes(
+    timedSessionPath,
+    new Date("2026-03-12T12:00:00.000Z"),
+    new Date("2026-03-12T12:00:00.000Z"),
+  );
+
+  const fallbackSessionPath = path.join(sessionsDir, "fallback.jsonl");
+  await fs.writeFile(
+    fallbackSessionPath,
+    `${JSON.stringify({
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            total_tokens: 60,
+            input_tokens: 40,
+            output_tokens: 20,
+            cached_input_tokens: 5,
+            reasoning_output_tokens: 2,
+          },
+        },
+      },
+    })}\n`,
+    "utf8",
+  );
+  await fs.utimes(
+    fallbackSessionPath,
+    new Date("2026-03-12T18:00:00.000Z"),
+    new Date("2026-03-12T18:00:00.000Z"),
+  );
+
+  const usage = await collectUsageStats(homeDir, {
+    now: "2026-03-13T00:00:00.000Z",
+  });
+
+  assert.equal(usage.localTotalTokens, 300);
+  assert.equal(usage.tokenWindows.all.localTotalTokens, 300);
+  assert.equal(usage.tokenWindows["1d"].localTotalTokens, 200);
+  assert.equal(usage.tokenWindows["7d"].localTotalTokens, 200);
+  assert.equal(usage.tokenWindows["30d"].localTotalTokens, 300);
+  assert.equal(usage.tokenWindows["1d"].tokenBreakdown.input_tokens, 130);
+  assert.equal(usage.tokenWindows["1d"].tokenBreakdown.output_tokens, 70);
+  assert.equal(usage.tokenWindows["1d"].tokenBreakdown.cached_input_tokens, 25);
+  assert.equal(usage.tokenWindows["1d"].tokenFileCount, 2);
+});
+
 test("deriveAccountHealth reports refreshable auth when access is stale but refresh token exists", () => {
   const health = deriveAccountHealth({
     auth: {
@@ -254,6 +346,8 @@ test("buildDashboardPayload summarizes connected account data for the web API", 
   assert.equal(payload.summary.connectedCount, 1);
   assert.equal(payload.summary.activeCount, 1);
   assert.equal(payload.summary.localTotalTokens, 777);
+  assert.equal(payload.summary.tokenWindows.all.localTotalTokens, 777);
+  assert.equal(payload.accounts[0].usage.tokenWindows.all.localTotalTokens, 777);
   assert.equal(payload.accounts[0].health.state, "online");
   assert.equal(payload.launch.proxy.resolved.summary, "Proxy off");
   assert.equal(payload.accounts[0].launch.actionLabel, "Launch Codex Login");

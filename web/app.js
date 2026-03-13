@@ -8,6 +8,7 @@ const state = {
   loadPromise: null,
   proxyTest: null,
   selectedSlug: null,
+  tokenWindow: "all",
 };
 
 const summaryGrid = document.querySelector("#summary-grid");
@@ -28,6 +29,7 @@ const statusPill = document.querySelector("#status-pill");
 const refreshButton = document.querySelector("#refresh-button");
 const jsonToggle = document.querySelector("#json-toggle");
 const fastToggle = document.querySelector("#fast-toggle");
+const tokenWindowSelect = document.querySelector("#token-window-select");
 const connectedTableBody = document.querySelector("#connected-table-body");
 const summaryCardTemplate = document.querySelector("#summary-card-template");
 const accountCardTemplate = document.querySelector("#account-card-template");
@@ -71,6 +73,10 @@ openUsageButton.addEventListener("click", () => {
 fastToggle.addEventListener("change", () => {
   state.fast = fastToggle.checked;
   loadSnapshot({ force: true });
+});
+tokenWindowSelect.addEventListener("change", () => {
+  state.tokenWindow = normalizeTokenWindow(tokenWindowSelect.value);
+  render();
 });
 proxyForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -137,6 +143,7 @@ async function loadSnapshot(options = {}) {
 
 function render() {
   const payload = state.data;
+  tokenWindowSelect.value = normalizeTokenWindow(state.tokenWindow);
   if (!payload) {
     return;
   }
@@ -347,8 +354,10 @@ async function openSurface(surface) {
 function renderSummary(payload) {
   const attentionCount =
     (payload.summary.refreshableCount || 0) + (payload.summary.staleCount || 0);
-  const bd = payload.summary.tokenBreakdown || {};
-  const cost = payload.summary.tokenCost;
+  const windowUsage = getWindowedUsage(payload.summary, state.tokenWindow);
+  const bd = windowUsage.tokenBreakdown || {};
+  const cost = windowUsage.tokenCost;
+  const windowLabel = getTokenWindowLongLabel(state.tokenWindow);
   const cards = [
     {
       label: "Online",
@@ -362,17 +371,17 @@ function renderSummary(payload) {
     },
     {
       label: "Total tokens",
-      value: formatNumber(payload.summary.localTotalTokens),
+      value: formatNumber(windowUsage.localTotalTokens),
       meta: state.fast
-        ? "Fast scan enabled"
-        : `In ${formatNumber(bd.input_tokens)} · Out ${formatNumber(bd.output_tokens)} · Cache ${formatNumber(bd.cached_input_tokens)}`,
+        ? `Window ${windowLabel} · fast scan enabled`
+        : `Window ${windowLabel} · In ${formatNumber(bd.input_tokens)} · Out ${formatNumber(bd.output_tokens)} · Cache ${formatNumber(bd.cached_input_tokens)}`,
     },
     {
       label: "Est. cost",
       value: cost ? `$${cost.totalCost.toFixed(2)}` : "—",
       meta: cost
-        ? `In $${cost.inputCost.toFixed(2)} · Cache $${cost.cachedCost.toFixed(2)} · Out $${cost.outputCost.toFixed(2)} · Saved $${cost.savedByCaching.toFixed(2)}`
-        : "No token data",
+        ? `Window ${windowLabel} · In $${cost.inputCost.toFixed(2)} · Cache $${cost.cachedCost.toFixed(2)} · Out $${cost.outputCost.toFixed(2)} · Saved $${cost.savedByCaching.toFixed(2)}`
+        : `No token data in ${windowLabel.toLowerCase()}`,
     },
     {
       label: "Last update",
@@ -424,6 +433,7 @@ function makeAccountCard(account) {
   const remoteUsage = account.remoteUsage || {};
   const allAccounts = state.data?.accounts || [];
   const launchActionLabel = account.launch?.actionLabel || "Launch Codex Login";
+  const windowUsage = getWindowedUsage(account.usage, state.tokenWindow);
   node.querySelector(".account-name").textContent = `slot ${account.slug}`;
   node.querySelector(".account-slug").textContent = resolveAccountTitle(account, allAccounts);
 
@@ -434,17 +444,17 @@ function makeAccountCard(account) {
   node.querySelector(".account-detail").textContent = describeAccountDetail(account);
 
   const metricRibbon = node.querySelector(".metric-ribbon");
-  const abd = account.usage.tokenBreakdown || {};
-  const acost = account.usage.tokenCost;
+  const abd = windowUsage.tokenBreakdown || {};
+  const acost = windowUsage.tokenCost;
   metricRibbon.replaceChildren(
     makeMetricChip(remoteUsage.planType || account.auth.planType || "—", "Plan"),
     makeMetricChip(formatQuotaWindow(remoteUsage.primaryWindow), "5h left"),
     makeMetricChip(formatQuotaWindow(remoteUsage.secondaryWindow), "Week left"),
-    makeMetricChip(formatNumber(account.usage.localTotalTokens), "Total tokens"),
-    makeMetricChip(formatNumber(abd.input_tokens), "Input"),
-    makeMetricChip(formatNumber(abd.output_tokens), "Output"),
-    makeMetricChip(formatNumber(abd.cached_input_tokens), "Cached"),
-    makeMetricChip(acost ? `$${acost.totalCost.toFixed(2)}` : "—", "Est. cost"),
+    makeMetricChip(formatNumber(windowUsage.localTotalTokens), withTokenWindowLabel("Total tokens")),
+    makeMetricChip(formatNumber(abd.input_tokens), withTokenWindowLabel("Input")),
+    makeMetricChip(formatNumber(abd.output_tokens), withTokenWindowLabel("Output")),
+    makeMetricChip(formatNumber(abd.cached_input_tokens), withTokenWindowLabel("Cached")),
+    makeMetricChip(acost ? `$${acost.totalCost.toFixed(2)}` : "—", withTokenWindowLabel("Est. cost")),
   );
 
   const identityRibbon = node.querySelector(".identity-ribbon");
@@ -475,6 +485,7 @@ function makeAccountCard(account) {
     ["5h reset", formatDateTime(remoteUsage.primaryWindow?.resetAt)],
     ["Week reset", formatDateTime(remoteUsage.secondaryWindow?.resetAt)],
     ["Code review", formatQuotaWindow(remoteUsage.codeReviewWindow)],
+    ["Token window", getTokenWindowLongLabel(state.tokenWindow)],
     ["Latest activity", formatDateTime(account.usage.latestActivityAt)],
   ];
   infoGrid.replaceChildren(...infoCells.map(([label, value]) => makeInfoCell(label, value)));
@@ -1027,6 +1038,54 @@ function setFeedback(message, tone = "good") {
   feedbackBanner.textContent = message;
   feedbackBanner.dataset.tone = tone;
   feedbackBanner.classList.remove("hidden");
+}
+
+function getWindowedUsage(source, tokenWindow) {
+  const normalizedWindow = normalizeTokenWindow(tokenWindow);
+  const usage = source?.tokenWindows?.[normalizedWindow];
+  if (usage) {
+    return usage;
+  }
+  return {
+    localTotalTokens: source?.localTotalTokens || 0,
+    tokenBreakdown: source?.tokenBreakdown || null,
+    tokenCost: source?.tokenCost || null,
+  };
+}
+
+function normalizeTokenWindow(value) {
+  return value === "1d" || value === "7d" || value === "30d" ? value : "all";
+}
+
+function getTokenWindowLongLabel(value) {
+  switch (normalizeTokenWindow(value)) {
+    case "1d":
+      return "Last 24 hours";
+    case "7d":
+      return "Last 7 days";
+    case "30d":
+      return "Last 30 days";
+    default:
+      return "All time";
+  }
+}
+
+function getTokenWindowShortLabel(value) {
+  switch (normalizeTokenWindow(value)) {
+    case "1d":
+      return "1d";
+    case "7d":
+      return "7d";
+    case "30d":
+      return "30d";
+    default:
+      return "All";
+  }
+}
+
+function withTokenWindowLabel(label) {
+  const suffix = getTokenWindowShortLabel(state.tokenWindow);
+  return suffix === "All" ? label : `${label} (${suffix})`;
 }
 
 function formatNumber(value) {

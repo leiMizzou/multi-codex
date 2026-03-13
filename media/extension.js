@@ -7,6 +7,7 @@ const state = vscode.getState() || {
   activeSlug: null,
   autoRefreshMs: 0,
   viewMode: "standard",
+  tokenWindow: "all",
   sortOrder: "asc",
   proxyMode: "off",
   proxySummary: "Proxy off",
@@ -14,6 +15,12 @@ const state = vscode.getState() || {
   summary: null,
   accounts: [],
 };
+const TOKEN_WINDOW_OPTIONS = [
+  ["all", "All"],
+  ["1d", "1d"],
+  ["7d", "7d"],
+  ["30d", "30d"],
+];
 
 const app = document.querySelector("#app");
 
@@ -118,6 +125,7 @@ function renderToolbar() {
     actions.className = "toolbar-actions";
     actions.appendChild(makeButton(getSortButtonLabel(), "toggleSortOrder", null, "secondary"));
     section.appendChild(actions);
+    section.appendChild(renderTokenWindowPicker());
     section.appendChild(renderModePicker());
     return section;
   }
@@ -152,30 +160,42 @@ function renderToolbar() {
   manage.appendChild(makeButton("Home", "selectProjectHome", null, "ghost"));
   section.appendChild(manage);
 
+  section.appendChild(renderTokenWindowPicker());
   section.appendChild(renderModePicker());
   return section;
 }
 
 function renderModePicker() {
+  return renderButtonPicker("View", "setViewMode", state.viewMode, [
+    ["minimal", "Minimal"],
+    ["standard", "Standard"],
+    ["detailed", "Detailed"],
+  ]);
+}
+
+function renderTokenWindowPicker() {
+  return renderButtonPicker(
+    "Tokens",
+    "setTokenWindow",
+    normalizeTokenWindow(state.tokenWindow),
+    TOKEN_WINDOW_OPTIONS,
+  );
+}
+
+function renderButtonPicker(labelText, action, currentValue, options) {
   const wrap = document.createElement("div");
   wrap.className = "mode-picker";
 
   const label = document.createElement("div");
   label.className = "mode-label";
-  label.textContent = "View";
-
-  const options = [
-    ["minimal", "Minimal"],
-    ["standard", "Standard"],
-    ["detailed", "Detailed"],
-  ];
+  label.textContent = labelText;
 
   const group = document.createElement("div");
   group.className = "mode-buttons";
   for (const [value, text] of options) {
-    const button = makeButton(text, "setViewMode", null, "ghost");
+    const button = makeButton(text, action, null, "ghost");
     button.dataset.value = value;
-    button.dataset.current = state.viewMode === value ? "true" : "false";
+    button.dataset.current = currentValue === value ? "true" : "false";
     button.classList.add("mode-button");
     group.appendChild(button);
   }
@@ -188,11 +208,11 @@ function renderSummary() {
   const section = document.createElement("section");
   section.className = "summary";
 
-  const summary = state.summary || {};
+  const summary = getWindowedUsage(state.summary || {}, state.tokenWindow);
   const bd = summary.tokenBreakdown || {};
   const cost = summary.tokenCost;
   section.innerHTML = `
-    <h3>Token usage · ${escapeHtml(formatNumber(summary.activeCount))} active / ${escapeHtml(formatNumber(summary.accountCount))} slots</h3>
+    <h3>Token usage · ${escapeHtml(getTokenWindowShortLabel(state.tokenWindow))} · ${escapeHtml(formatNumber((state.summary || {}).activeCount))} active / ${escapeHtml(formatNumber((state.summary || {}).accountCount))} slots</h3>
   `;
 
   const grid = document.createElement("div");
@@ -212,10 +232,15 @@ function renderSummary() {
     metric.innerHTML = `
       <div class="metric-label">${escapeHtml(label)}</div>
       <div class="metric-value">${escapeHtml(value)}</div>
-    `;
+      `;
     grid.appendChild(metric);
   }
   section.appendChild(grid);
+
+  const meta = document.createElement("div");
+  meta.className = "summary-meta";
+  meta.textContent = `Window ${getTokenWindowLongLabel(state.tokenWindow)} from local session logs.`;
+  section.appendChild(meta);
 
   return section;
 }
@@ -248,6 +273,7 @@ function renderCard(account) {
 }
 
 function renderCardContent(account, mode) {
+  const tokenMetrics = getWindowedUsage(account, state.tokenWindow);
   if (mode === "minimal") {
     return `
       <div class="minimal-inline">
@@ -258,8 +284,8 @@ function renderCardContent(account, mode) {
   }
 
   if (mode === "detailed") {
-    const dbd = account.tokenBreakdown || {};
-    const dcost = account.tokenCost;
+    const dbd = tokenMetrics.tokenBreakdown || {};
+    const dcost = tokenMetrics.tokenCost;
     return `
       <div class="card-grid">
         ${renderKv("5h left", renderMeter(account.primaryRemainingPercent, account.primaryLabel))}
@@ -274,20 +300,20 @@ function renderCardContent(account, mode) {
         ${renderKv("Plan", escapeHtml(account.plan || "—"))}
       </div>
       <div class="card-grid token-stats">
-        ${renderKv("Total tokens", escapeHtml(formatNumber(account.localTotalTokens)))}
-        ${renderKv("Input", escapeHtml(formatNumber(dbd.input_tokens)))}
-        ${renderKv("Output", escapeHtml(formatNumber(dbd.output_tokens)))}
-        ${renderKv("Cached", escapeHtml(formatNumber(dbd.cached_input_tokens)))}
-        ${renderKv("Reasoning", escapeHtml(formatNumber(dbd.reasoning_output_tokens)))}
-        ${renderKv("Est. cost", escapeHtml(dcost ? '$' + dcost.totalCost.toFixed(2) : '—'))}
+        ${renderKv(withTokenWindowLabel("Total tokens"), escapeHtml(formatNumber(tokenMetrics.localTotalTokens)))}
+        ${renderKv(withTokenWindowLabel("Input"), escapeHtml(formatNumber(dbd.input_tokens)))}
+        ${renderKv(withTokenWindowLabel("Output"), escapeHtml(formatNumber(dbd.output_tokens)))}
+        ${renderKv(withTokenWindowLabel("Cached"), escapeHtml(formatNumber(dbd.cached_input_tokens)))}
+        ${renderKv(withTokenWindowLabel("Reasoning"), escapeHtml(formatNumber(dbd.reasoning_output_tokens)))}
+        ${renderKv(withTokenWindowLabel("Est. cost"), escapeHtml(dcost ? '$' + dcost.totalCost.toFixed(2) : '—'))}
       </div>
       <div class="card-detail">${escapeHtml(account.detail || "")}</div>
       <div class="card-path">${escapeHtml(account.homeDir)}</div>
     `;
   }
 
-  const sbd = account.tokenBreakdown || {};
-  const scost = account.tokenCost;
+  const sbd = tokenMetrics.tokenBreakdown || {};
+  const scost = tokenMetrics.tokenCost;
   return `
     <div class="card-grid">
       ${renderKv("5h left", renderMeter(account.primaryRemainingPercent, account.primaryLabel))}
@@ -296,10 +322,10 @@ function renderCardContent(account, mode) {
       ${renderKv("Week reset", escapeHtml(formatDateTime(account.secondaryResetAt)))}
     </div>
     <div class="card-grid token-stats">
-      ${renderKv("Tokens", escapeHtml(formatNumber(account.localTotalTokens)))}
-      ${renderKv("In/Out", escapeHtml(formatNumber(sbd.input_tokens) + ' / ' + formatNumber(sbd.output_tokens)))}
-      ${renderKv("Cached", escapeHtml(formatNumber(sbd.cached_input_tokens)))}
-      ${renderKv("Cost", escapeHtml(scost ? '$' + scost.totalCost.toFixed(2) : '—'))}
+      ${renderKv(withTokenWindowLabel("Tokens"), escapeHtml(formatNumber(tokenMetrics.localTotalTokens)))}
+      ${renderKv(withTokenWindowLabel("In/Out"), escapeHtml(formatNumber(sbd.input_tokens) + ' / ' + formatNumber(sbd.output_tokens)))}
+      ${renderKv(withTokenWindowLabel("Cached"), escapeHtml(formatNumber(sbd.cached_input_tokens)))}
+      ${renderKv(withTokenWindowLabel("Cost"), escapeHtml(scost ? '$' + scost.totalCost.toFixed(2) : '—'))}
     </div>
   `;
 }
@@ -337,6 +363,50 @@ function formatSessionCount(value) {
 
 function getSortButtonLabel() {
   return state.sortOrder === "desc" ? "Sort 5h ↓" : "Sort 5h ↑";
+}
+
+function getWindowedUsage(source, tokenWindow) {
+  const normalizedWindow = normalizeTokenWindow(tokenWindow);
+  const usage = source?.tokenWindows?.[normalizedWindow];
+  if (usage) {
+    return usage;
+  }
+  return {
+    localTotalTokens: source?.localTotalTokens || 0,
+    tokenBreakdown: source?.tokenBreakdown || null,
+    tokenCost: source?.tokenCost || null,
+  };
+}
+
+function withTokenWindowLabel(label) {
+  const suffix = getTokenWindowShortLabel(state.tokenWindow);
+  return suffix === "All" ? label : `${label} (${suffix})`;
+}
+
+function getTokenWindowShortLabel(value) {
+  switch (normalizeTokenWindow(value)) {
+    case "1d":
+      return "1d";
+    case "7d":
+      return "7d";
+    case "30d":
+      return "30d";
+    default:
+      return "All";
+  }
+}
+
+function getTokenWindowLongLabel(value) {
+  switch (normalizeTokenWindow(value)) {
+    case "1d":
+      return "Last 24 hours";
+    case "7d":
+      return "Last 7 days";
+    case "30d":
+      return "Last 30 days";
+    default:
+      return "All time";
+  }
 }
 
 function renderKv(label, valueHtml) {
@@ -462,6 +532,10 @@ function formatRelative(value) {
     return `${Math.round(absMs / hour)}h ago`;
   }
   return `${Math.round(absMs / day)}d ago`;
+}
+
+function normalizeTokenWindow(value) {
+  return value === "1d" || value === "7d" || value === "30d" ? value : "all";
 }
 
 function escapeHtml(value) {

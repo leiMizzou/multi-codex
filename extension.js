@@ -59,6 +59,7 @@ class MultiCodexController {
       activeSlug: null,
       autoRefreshMs: this.getAutoRefreshMs(),
       viewMode: this.getViewMode(),
+      tokenWindow: "all",
       sortOrder: this.getSortOrder(),
       proxyMode: DEFAULT_PROXY_MODE,
       proxySummary: "Proxy off",
@@ -364,6 +365,9 @@ class MultiCodexController {
       case "setViewMode":
         await this.setViewMode(message.value);
         return;
+      case "setTokenWindow":
+        await this.setTokenWindow(message.value);
+        return;
       case "toggleSortOrder":
         await this.toggleSortOrder();
         return;
@@ -436,6 +440,7 @@ class MultiCodexController {
         activeSlug: null,
         autoRefreshMs,
         viewMode: this.getViewMode(),
+        tokenWindow: normalizeTokenWindow(this.state.tokenWindow),
         sortOrder: this.getSortOrder(),
         proxyMode: proxy.mode,
         proxySummary: proxy.summary,
@@ -483,6 +488,7 @@ class MultiCodexController {
       activeSlug,
       autoRefreshMs,
       viewMode: this.getViewMode(),
+      tokenWindow: normalizeTokenWindow(this.state.tokenWindow),
       sortOrder,
       proxyMode: proxy.mode,
       proxySummary: proxy.summary,
@@ -740,6 +746,14 @@ class MultiCodexController {
     await vscode.workspace
       .getConfiguration(CONFIG_PREFIX)
       .update("viewMode", next, vscode.ConfigurationTarget.Global);
+  }
+
+  async setTokenWindow(value) {
+    this.state = {
+      ...this.state,
+      tokenWindow: normalizeTokenWindow(value),
+    };
+    await this.pushState();
   }
 
   async toggleSortOrder() {
@@ -1280,6 +1294,7 @@ function normalizeAccount(account, accounts, proxy) {
     localTotalTokens: account.usage?.localTotalTokens || 0,
     tokenBreakdown: account.usage?.tokenBreakdown || null,
     tokenCost: account.usage?.tokenCost || null,
+    tokenWindows: account.usage?.tokenWindows || null,
   };
 
   return {
@@ -1399,6 +1414,10 @@ function dateSortValue(value) {
 
 function normalizeViewMode(value) {
   return value === "minimal" || value === "detailed" ? value : "standard";
+}
+
+function normalizeTokenWindow(value) {
+  return value === "1d" || value === "7d" || value === "30d" ? value : "all";
 }
 
 function formatQuotaWindow(window) {

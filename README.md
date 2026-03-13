@@ -7,6 +7,7 @@ Local multi-account Codex manager. One `CODEX_HOME` per account, with a VS Code 
 - **Multi-account isolation** — keep multiple Codex/ChatGPT logins cached locally without overwriting each other
 - **Quota monitoring** — 5-hour window, weekly window, subscription expiry, and reset times per slot
 - **Token usage tracking** — input, output, cached input, and reasoning tokens parsed from local session logs
+- **Token windows** — switch local usage and estimated cost between all time, last 24h, last 7d, and last 30d
 - **Cost estimation** — estimated USD spend based on token breakdown, plus cache savings
 - **Proxy routing** — launch Codex through `OPENAI_BASE_URL` or a custom `model_provider` (e.g. CLIProxyAPI)
 - **VS Code extension** — sidebar with slot switching, one-click launch/resume, quota sorting, and three view modes
@@ -75,6 +76,8 @@ Cost is estimated per model (default: `gpt-5.4`). Rates per 1M tokens:
 
 Prices sourced from [OpenAI API Pricing](https://developers.openai.com/api/docs/pricing). Token scanning always runs, regardless of the `fastScan` setting.
 
+Windowed token views (`1d`, `7d`, `30d`) are derived from local session logs. When `token_count` events include timestamps, the window uses those event boundaries; otherwise the session is grouped by its latest local activity time.
+
 ## Account store layout
 
 ```text
@@ -111,6 +114,7 @@ code --install-extension multi-codex-0.1.1.vsix --force
 - Create, import, login, and delete slots directly from the sidebar
 - Auto-refreshes every 6 hours; manual refresh for immediate updates
 - Token usage summary at the top: total tokens, input/output/cached breakdown, estimated cost, and cache savings
+- Manual token window switcher: **All**, **1d**, **7d**, **30d**
 
 ### Extension commands
 
@@ -178,6 +182,7 @@ Start with `./bin/multi-codex.js web --open`. The dashboard supports:
 - Creating, importing, and removing slots
 - Saving per-slot labels (team, subscription, owner, notes)
 - Token usage breakdown and cost estimation per slot and globally
+- Manual token window selector for token totals and estimated cost
 - Launching `codex` or `codex login` per slot
 - Proxy configuration with test and optional local start command
 - Opening ChatGPT, account settings, and usage pages
